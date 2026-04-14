@@ -349,6 +349,7 @@
   import { getCodeEditor, setCodeEditor, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getAgentMaxIterations, setAgentMaxIterations } from '../lib/agents.js';
   import { clearHistory } from '../lib/implementer.js';
   import { clearCardLanes } from '../lib/board.js';
+  import { setPanel, clearPanelFromUrl, isRestoring } from '../scripts/router.js';
 
   const AI_PROVIDERS = [
     { id: 'claude', label: 'Claude', icon: 'auto_awesome' },
@@ -505,6 +506,14 @@
 
   // ── Open/close ────────────────────────────────────────────────
   document.getElementById('settings-panel-close')?.addEventListener('click', () => {
+    clearPanelFromUrl();
+    panel?.classList.add('hidden');
+    panel?.classList.remove('flex');
+  });
+
+  // Fired by _closeAllPanels() during popstate navigation — hides panel
+  // without touching the URL (the browser has already updated it).
+  document.addEventListener('close-settings-panel', () => {
     panel?.classList.add('hidden');
     panel?.classList.remove('flex');
   });
@@ -516,5 +525,6 @@
     showSection('editor');
     panel?.classList.remove('hidden');
     panel?.classList.add('flex');
+    if (!isRestoring()) setPanel('settings');
   });
 </script>

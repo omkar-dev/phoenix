@@ -1,3 +1,4 @@
+import { effect } from '@preact/signals';
 import { initBoard, renderBoard } from '../lib/board.js';
 import { onRunUpdate } from '../lib/implementer.js';
 import { AGENT_BASE_URL, SEMANTIC_BASE_URL } from '../lib/config.js';
@@ -14,6 +15,14 @@ import {
 } from '../lib/signals.js';
 import { bus, Events } from '../lib/event-bus.js';
 import { initFavicon } from '../lib/favicon.js';
+import {
+  getParams,
+  setPanel,
+  clearPanelFromUrl,
+  isRestoring,
+  restoreFromUrl,
+  initRouter,
+} from './router.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -34,6 +43,34 @@ onRunUpdate(() => {
   bus.emit(Events.RUN_UPDATE);
 });
 
+// ── Panel helpers used by router ──────────────────────────────
+function _openPanel(name) {
+  switch (name) {
+    case 'planning': planningPanelOpenSignal.value = true; break;
+    case 'agents':   agentsPanelOpenSignal.value   = true; break;
+    case 'teams':    teamsPanelOpenSignal.value     = true; break;
+    case 'settings': document.dispatchEvent(new CustomEvent('open-settings-panel')); break;
+  }
+}
+
+function _closeAllPanels() {
+  planningPanelOpenSignal.value = false;
+  agentsPanelOpenSignal.value   = false;
+  teamsPanelOpenSignal.value    = false;
+  document.dispatchEvent(new CustomEvent('close-settings-panel'));
+}
+
+// ── Restore panel state from URL before effects are registered ─
+// This must run before the effect() blocks below so the initial
+// effect evaluation sees the correct signal values and does not
+// incorrectly clear a ?panel= param that belongs to the current page.
+restoreFromUrl({
+  openPanel: _openPanel,
+  closeAll:  _closeAllPanels,
+  loadRepo:  loadIssues,
+  showEmpty: () => showState('empty'),
+});
+
 // ── Signal-based panel toggles (Preact islands) ───────────────
 $('agent-rail-btn')?.addEventListener('click', () => {
   railOpenSignal.value = !railOpenSignal.value;
@@ -46,6 +83,43 @@ $('teams-btn')?.addEventListener('click', () => {
 });
 $('planning-btn')?.addEventListener('click', () => {
   planningPanelOpenSignal.value = !planningPanelOpenSignal.value;
+});
+
+// ── URL ↔ panel signal effects ────────────────────────────────
+// Each effect mirrors its signal into ?panel=<name>.
+// The isRestoring() guard prevents URL writes during the initial
+// restoreFromUrl() pass (which already has the correct URL).
+effect(() => {
+  if (planningPanelOpenSignal.value) {
+    if (!isRestoring()) setPanel('planning');
+  } else if (getParams().get('panel') === 'planning') {
+    if (!isRestoring()) clearPanelFromUrl();
+  }
+});
+
+effect(() => {
+  if (agentsPanelOpenSignal.value) {
+    if (!isRestoring()) setPanel('agents');
+  } else if (getParams().get('panel') === 'agents') {
+    if (!isRestoring()) clearPanelFromUrl();
+  }
+});
+
+effect(() => {
+  if (teamsPanelOpenSignal.value) {
+    if (!isRestoring()) setPanel('teams');
+  } else if (getParams().get('panel') === 'teams') {
+    if (!isRestoring()) clearPanelFromUrl();
+  }
+});
+
+// ── Popstate (back/forward) ───────────────────────────────────
+initRouter({
+  onPanel: (name) => {
+    _closeAllPanels();
+    if (name) _openPanel(name);
+  },
+  onRepo: loadIssues,
 });
 
 // ── Service health checks ─────────────────────────────────────
