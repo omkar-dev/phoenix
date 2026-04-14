@@ -179,6 +179,29 @@ export function triggerRefine(issue, userPrompt = '') {
 }
 
 /**
+ * Re-run the implementation for an issue, optionally incorporating an extra
+ * prompt and any description changes the user made in the Details tab.
+ *
+ * @param {object} issue           GitHub issue object (title, body, number, …)
+ * @param {string} [extraPrompt]   Additional instructions/context to append to the spec
+ * @param {string|null} [overrideAgentId]  Force a specific agent (bypasses team logic)
+ */
+export async function triggerReimplement(issue, extraPrompt = '', overrideAgentId = null) {
+  const augmentedIssue = extraPrompt.trim()
+    ? {
+        ...issue,
+        body: [
+          issue.body ?? '',
+          '---',
+          '**Additional instructions for this reimplementation cycle:**',
+          extraPrompt.trim(),
+        ].join('\n\n'),
+      }
+    : issue;
+  return triggerImplement(augmentedIssue, overrideAgentId);
+}
+
+/**
  * Trigger an agent run to address unresolved PR review comments.
  *
  * @param {object} issue  GitHub issue/PR object (number, title, body, html_url, …)

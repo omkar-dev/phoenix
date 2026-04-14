@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { drawerSignal, closeDrawer, setDrawerTab, runsSignal, logsSignal, suggestionsSignal, dismissSuggestion } from '../../lib/signals.js';
-import { triggerImplement, triggerAddressPRComments, cancelRun, pushRun } from '../../scripts/run-dispatcher.js';
+import { triggerImplement, triggerReimplement, triggerAddressPRComments, cancelRun, pushRun } from '../../scripts/run-dispatcher.js';
 import { updateIssue, fetchIssueComments, createIssueComment, fetchOrgMembers, fetchRepoLabels, createRepoLabel, fetchPRReviewThreads } from '../../lib/github-api.js';
 import { getAgents, getTeams, getCodeEditor, getIssueTeam, setIssueTeam } from '../../lib/agents.js';
 import { AGENT_BASE_URL } from '../../lib/config.js';
@@ -1349,6 +1349,7 @@ function AITab({ issue }: { issue: Issue }) {
   );
 
   const [refinePrompt, setRefinePrompt] = useState('');
+  const [reimplementPrompt, setReimplementPrompt] = useState('');
   const [pushLoading, setPushLoading] = useState(false);
 
   // PR review threads — loaded when the drawer opens for a pull request
@@ -1383,7 +1384,8 @@ function AITab({ issue }: { issue: Issue }) {
     setAddressingPR(false);
   }
 
-  const isIdleOrFailed = status === 'idle' || status === 'failed';
+  const isIdleOrFailed = status === 'idle' || status === 'failed' || status === 'cancelled';
+  const canReimplement = status === 'done' || status === 'needs_review';
 
   if ((issue as any)._local) {
     return (
@@ -1577,10 +1579,44 @@ function AITab({ issue }: { issue: Issue }) {
             style="background:linear-gradient(135deg,#003d9b,#0052cc)"
           >
             <span class="material-symbols-outlined" style="font-size:14px">play_arrow</span>
-            {status === 'failed' ? 'Retry' : 'Start Implementation'}
+            {status === 'failed' ? 'Retry' : status === 'cancelled' ? 'Restart' : 'Start Implementation'}
           </button>
         )}
       </div>
+
+      {/* Re-run with Updates — visible after a completed or needs-review run */}
+      {canReimplement && (
+        <div class="rounded-xl p-4 space-y-3" style="background:#edeef0">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#0e7490">replay</span>
+            <p class="text-xs font-bold text-on-surface">Re-run with Updates</p>
+          </div>
+          <p class="text-[11px] text-on-surface-variant leading-relaxed">
+            Add extra instructions or update the description in the Details tab, then re-run the
+            implementation. The agent will pick up all changes.
+          </p>
+          <textarea
+            value={reimplementPrompt}
+            onInput={(e) => setReimplementPrompt((e.target as HTMLTextAreaElement).value)}
+            placeholder="Additional context or instructions (optional)…"
+            rows={3}
+            class="w-full text-[11px] text-on-surface bg-white rounded-lg px-3 py-2 resize-none outline-none leading-relaxed"
+            style="border:1px solid #c3c6d6"
+          />
+          <button
+            onClick={() => {
+              triggerReimplement(issue, reimplementPrompt.trim(), selectedAgentId || null);
+              setReimplementPrompt('');
+              setDrawerTab('logs');
+            }}
+            class="flex items-center justify-center gap-1.5 w-full text-on-primary text-xs font-semibold py-2 rounded-lg transition-all active:scale-95"
+            style="background:linear-gradient(135deg,#0e7490,#0891b2)"
+          >
+            <span class="material-symbols-outlined" style="font-size:14px">replay</span>
+            Re-run Implementation
+          </button>
+        </div>
+      )}
 
       {/* Semantic Search */}
       <div class="rounded-xl p-4 space-y-2" style="background:#edeef0">
