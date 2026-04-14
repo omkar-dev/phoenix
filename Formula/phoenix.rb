@@ -88,9 +88,8 @@ class Phoenix < Formula
       phoenix-semantic --port "$SEMANTIC_PORT" &
       pids+=($!)
 
-      python3 -m http.server "$FRONTEND_PORT" --directory "$DIST" \
+      #{Formula["python@3.12"].opt_bin/"python3"} -m http.server "$FRONTEND_PORT" --directory "$DIST" \
         >/dev/null 2>&1 &
-      pids+=($!)
 
       # Wait for agent to become healthy before opening the browser
       echo ""
