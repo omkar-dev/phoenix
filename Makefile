@@ -82,7 +82,11 @@ clean:
 #   make formula-sha                  # uses version from pyproject.toml
 #   make formula-sha TAG=v5.1.0       # override tag
 
-TAG ?= v$(shell grep '^version' agent/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+formula-sha:
+	$(eval TAG ?= v$(shell grep '^version' agent/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/'))
+	@echo "Computing sha256 for tag $(TAG)…"
+	@curl -sL "https://github.com/omkar-dev/phoenix/archive/refs/tags/$(TAG).tar.gz" \
+	  | shasum -a 256 | awk '{print $$1}'
 
 formula-sha:
 	@echo "Computing sha256 for tag $(TAG)…"
