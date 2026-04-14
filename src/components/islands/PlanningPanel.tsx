@@ -24,6 +24,7 @@ import { getAgents, getGlobalAiKey } from '../../lib/agents.js';
 import { AGENT_BASE_URL } from '../../lib/config.js';
 import { state } from '../../scripts/state.js';
 import { planningPanelOpenSignal } from '../../lib/signals.js';
+import { uuid } from '../../lib/formatters.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -562,7 +563,7 @@ export default function PlanningPanel() {
 
   function createNote(): Note {
     const now = new Date().toISOString();
-    const note: Note = { id: crypto.randomUUID(), title: '', content: '', createdAt: now, updatedAt: now };
+    const note: Note = { id: uuid(), title: '', content: '', createdAt: now, updatedAt: now };
     setNotes((prev) => {
       const next = [note, ...prev];
       localStorage.setItem('pnx_planning_notes', JSON.stringify(next));
@@ -957,7 +958,7 @@ Generate 2–6 issues.`;
         ].join('\n');
         const now = new Date().toISOString();
         docNote = {
-          id: crypto.randomUUID(),
+          id: uuid(),
           title: `Decisions — ${new Date().toLocaleDateString()}`,
           content: docContent,
           createdAt: now,

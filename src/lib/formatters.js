@@ -1,3 +1,10 @@
+/** crypto.randomUUID() is only available in secure contexts (HTTPS / localhost). */
+export function uuid() {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function escHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
