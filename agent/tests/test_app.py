@@ -90,7 +90,7 @@ async def test_movements_log_with_actor(client):
         "actor": "octocat",
     })
     assert resp.status_code == 200
-
+    assert resp.status_code == 204
     resp = await client.get("/movements?repo=owner/repo")
     data = resp.json()
     assert len(data) == 1
