@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -16,7 +16,7 @@ _refine_queues: dict[str, asyncio.Queue] = {}
 async def _emit_refine(queue: asyncio.Queue, type_: str, data: dict) -> None:
     await queue.put(RunEvent(
         type=type_,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
         data=data,
     ))
 
@@ -128,8 +128,8 @@ async def stream_refine(run_id: str) -> StreamingResponse:
                 if event.type in ("complete", "error", "close"):
                     _refine_queues.pop(run_id, None)
                     break
-            except asyncio.TimeoutError:
-                yield f"data: {RunEvent(type='ping', timestamp=datetime.now(timezone.utc).isoformat(), data={}).model_dump_json()}\n\n"
+            except TimeoutError:
+                yield f"data: {RunEvent(type='ping', timestamp=datetime.now(UTC).isoformat(), data={}).model_dump_json()}\n\n"
 
     return StreamingResponse(
         generate(),

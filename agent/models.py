@@ -1,4 +1,3 @@
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -6,7 +5,7 @@ from pydantic import BaseModel, Field
 class IssueSpec(BaseModel):
     intent: str
     acceptance_criteria: list[str]
-    technical_notes: Optional[str] = None
+    technical_notes: str | None = None
     context_files: list[str] = Field(default_factory=list)
 
 
@@ -26,19 +25,19 @@ class RunRequest(BaseModel):
     create_draft_pr: bool = True
     mcp_servers: list[McpServer] = Field(default_factory=list)
     # LLM selection — falls back to ANTHROPIC_API_KEY / LLM_MODEL env vars if not supplied.
-    llm_model: Optional[str] = None
-    llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None         # e.g. https://api.anthropic.com
-    fallback_llm_model: Optional[str] = None   # used if primary model fails
+    llm_model: str | None = None
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None         # e.g. https://api.anthropic.com
+    fallback_llm_model: str | None = None   # used if primary model fails
     # Agent personality & behaviour
-    system_prompt: Optional[str] = None         # prepended to every task prompt
-    purpose: Optional[str] = None               # one-line agent role description
-    reasoning_pattern: Optional[str] = None     # e.g. "observe-plan-act"
-    guardrails_always: Optional[str] = None     # things the agent must always do
-    guardrails_never: Optional[str] = None      # things the agent must never do
-    sampling: Optional[str] = None              # deterministic | balanced | creative
-    autonomy: Optional[str] = None              # assist | semi-autonomous | autonomous
-    max_iterations: Optional[int] = Field(None, ge=1, description="Max agent iterations per run")
+    system_prompt: str | None = None         # prepended to every task prompt
+    purpose: str | None = None               # one-line agent role description
+    reasoning_pattern: str | None = None     # e.g. "observe-plan-act"
+    guardrails_always: str | None = None     # things the agent must always do
+    guardrails_never: str | None = None      # things the agent must never do
+    sampling: str | None = None              # deterministic | balanced | creative
+    autonomy: str | None = None              # assist | semi-autonomous | autonomous
+    max_iterations: int | None = Field(None, ge=1, description="Max agent iterations per run")
 
 
 class RunEvent(BaseModel):
@@ -62,12 +61,12 @@ class OpenEditorRequest(BaseModel):
 class RefineRequest(BaseModel):
     title: str
     body: str
-    llm_model: Optional[str] = None
-    llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None
-    system_prompt: Optional[str] = None
-    user_prompt: Optional[str] = None
-    sampling: Optional[str] = None
+    llm_model: str | None = None
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None
+    system_prompt: str | None = None
+    user_prompt: str | None = None
+    sampling: str | None = None
 
 
 class RepoBody(BaseModel):

@@ -1,7 +1,7 @@
-from typing import Optional
+
+from fastapi import APIRouter, Query
 
 import db as _db
-from fastapi import APIRouter, Query
 from models import MovementBody
 
 router = APIRouter()
@@ -14,7 +14,7 @@ async def record_movement(body: MovementBody) -> None:
 
 @router.get("/movements")
 async def get_movements(
-    repo: Optional[str] = Query(default=None),
+    repo: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
 ) -> list[dict]:
     return await _db.list_movements(repo, limit)

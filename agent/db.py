@@ -10,9 +10,8 @@ DB lives at  ~/.pnx/pnx.db  (same directory as the base-clone cache).
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import aiosqlite
 
@@ -61,7 +60,7 @@ async def init_db() -> None:
 
 async def upsert_repo(full_name: str) -> None:
     """Insert or update a repo, bumping access_count and refreshing last_accessed."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
@@ -99,7 +98,7 @@ async def delete_repo(full_name: str) -> None:
 async def log_movement(
     repo: str, issue_number: int, from_column: str, to_column: str
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
@@ -112,7 +111,7 @@ async def log_movement(
 
 
 async def list_movements(
-    repo: Optional[str] = None, limit: int = 200
+    repo: str | None = None, limit: int = 200
 ) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -139,7 +138,7 @@ async def append_run_log(
     event_type: str,
     data: dict,
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """

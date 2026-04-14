@@ -7,9 +7,9 @@ import asyncio
 import re
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from html.parser import HTMLParser
-from typing import AsyncIterator
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -73,7 +73,7 @@ async def _stream_notes_ask(req: NotesAskRequest, queue: asyncio.Queue) -> None:
     async def emit(type_: str, data: dict) -> None:
         await queue.put(RunEvent(
             type=type_,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             data=data,
         ))
 
@@ -299,8 +299,8 @@ async def notes_ask(req: NotesAskRequest) -> StreamingResponse:
                 yield f"data: {event.model_dump_json()}\n\n"
                 if event.type in ("complete", "error", "close"):
                     break
-            except asyncio.TimeoutError:
-                yield f"data: {RunEvent(type='ping', timestamp=datetime.now(timezone.utc).isoformat(), data={}).model_dump_json()}\n\n"
+            except TimeoutError:
+                yield f"data: {RunEvent(type='ping', timestamp=datetime.now(UTC).isoformat(), data={}).model_dump_json()}\n\n"
 
     return StreamingResponse(
         generate(),

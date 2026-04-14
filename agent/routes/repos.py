@@ -1,5 +1,6 @@
-import db as _db
 from fastapi import APIRouter, Query
+
+import db as _db
 from models import RepoBody
 
 router = APIRouter()

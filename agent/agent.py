@@ -3,12 +3,11 @@ import json
 import re
 import shutil
 import tempfile
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncIterator, Optional
 
 from github import Github
-import db as _db
 from openhands.sdk import LLM, Agent, Conversation, Tool
 from openhands.sdk.event import (
     ACPToolCallEvent,
@@ -16,17 +15,32 @@ from openhands.sdk.event import (
     MessageEvent,
     ObservationEvent,
 )
+
+import db as _db
+
 try:
-    from openhands.sdk.event.conversation_error import ConversationErrorEvent as _ConversationErrorEvent
+    from openhands.sdk.event.conversation_error import (
+        ConversationErrorEvent as _ConversationErrorEvent,
+    )
 except ImportError:
     try:
-        from openhands.sdk.event import ConversationErrorEvent as _ConversationErrorEvent
+        from openhands.sdk.event import (
+            ConversationErrorEvent as _ConversationErrorEvent,
+        )
     except ImportError:
         _ConversationErrorEvent = None
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 
-from config import ANTHROPIC_API_KEY, BASE_REPOS_DIR, GITHUB_TOKEN, LLM_MODEL, _repo_locks
+from config import (
+    ANTHROPIC_API_KEY,
+    BASE_REPOS_DIR,
+    GITHUB_TOKEN,
+    LLM_MODEL,
+    _repo_locks,
+)
+from models import RunEvent, RunRequest
+from registry import AgentResult, _runs
 
 _SAMPLING_TEMP: dict[str, float] = {
     "deterministic": 0.0,
@@ -37,22 +51,20 @@ _SAMPLING_TEMP: dict[str, float] = {
 # Per-issue lock: serialises the branch rename in _commit_local so concurrent
 # runs for the same issue number don't race on the target branch name.
 _commit_locks: dict[str, asyncio.Lock] = {}
-from models import RunEvent, RunRequest
-from registry import AgentResult, _runs
 
 
 class ImplementerAgent:
     def __init__(self, run_id: str, request: RunRequest) -> None:
         self.run_id = run_id
         self.request = request
-        self.work_dir: Optional[Path] = None       # the worktree path
-        self._base_dir: Optional[Path] = None      # the shared base clone
-        self._worktree_branch: Optional[str] = None  # branch name inside base repo
+        self.work_dir: Path | None = None       # the worktree path
+        self._base_dir: Path | None = None      # the shared base clone
+        self._worktree_branch: str | None = None  # branch name inside base repo
         self._queue: asyncio.Queue[RunEvent] = asyncio.Queue()
         self._gh = Github(GITHUB_TOKEN)
         self._repo = None   # resolved lazily in run()
         self._issue = None  # resolved lazily in run()
-        self._conversation: Optional[Conversation] = None
+        self._conversation: Conversation | None = None
         self._file_tree: str = ""
         self._file_snippets: str = ""
         self._tool_calls: int = 0
@@ -102,7 +114,7 @@ class ImplementerAgent:
     async def emit(self, type_: str, data: dict) -> None:
         await self._queue.put(RunEvent(
             type=type_,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             data=data,
         ))
         # Persist to SQLite (fire-and-forget; never block the SSE stream)
@@ -126,10 +138,10 @@ class ImplementerAgent:
                 yield event
                 if event.type in ("complete", "error", "close"):
                     break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield RunEvent(
                     type="ping",
-                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    timestamp=datetime.now(UTC).isoformat(),
                     data={},
                 )
 
@@ -642,7 +654,7 @@ class ImplementerAgent:
 
     # ── Git helpers ───────────────────────────────────────────────────────────
 
-    async def _git(self, *args: str, cwd: Optional[Path] = None) -> tuple[int, str]:
+    async def _git(self, *args: str, cwd: Path | None = None) -> tuple[int, str]:
         """Run git, return (returncode, stderr)."""
         proc = await asyncio.create_subprocess_exec(
             "git", *args,
@@ -653,7 +665,7 @@ class ImplementerAgent:
         _, stderr = await proc.communicate()
         return proc.returncode, stderr.decode().strip()
 
-    async def _git_out(self, *args: str, cwd: Optional[Path] = None) -> tuple[int, str]:
+    async def _git_out(self, *args: str, cwd: Path | None = None) -> tuple[int, str]:
         """Run git, return (returncode, stdout)."""
         proc = await asyncio.create_subprocess_exec(
             "git", *args,
@@ -691,7 +703,7 @@ class ImplementerAgent:
                     "worktree", "list", "--porcelain", cwd=self._base_dir
                 )
                 if rc_wl == 0:
-                    wt_path: Optional[str] = None
+                    wt_path: str | None = None
                     for line in wt_out.splitlines():
                         if line.startswith("worktree "):
                             wt_path = line[len("worktree "):].strip()

@@ -1,13 +1,12 @@
 import shutil
 import tempfile
-import traceback
 from pathlib import Path
 
-import db as _db
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import db as _db
 from config import CORS_ORIGINS
 from routes import movements, notes, refine, repos, runs, worktree
 
