@@ -184,38 +184,40 @@ def _stream_refine_events(agent_url: str, stream_url: str) -> int:
         print(f"Error: Failed to connect to SSE stream: {exc}", file=sys.stderr)
         return 1
 
-    for raw_line in resp:
-        line = raw_line.decode("utf-8", errors="replace").strip()
-        if not line.startswith("data: "):
-            continue
-        try:
-            event = json.loads(line[6:])
-        except json.JSONDecodeError:
-            continue
+    try:
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line.startswith("data: "):
+                continue
+            try:
+                event = json.loads(line[6:])
+            except json.JSONDecodeError:
+                continue
 
-        event_type = event.get("type", "")
-        event_data = event.get("data", {})
+            event_type = event.get("type", "")
+            event_data = event.get("data", {})
 
-        if event_type == "reasoning":
-            content = event_data.get("content", "")
-            if content:
-                print(f"  💭 {content}")
-        elif event_type == "progress":
-            msg = event_data.get("message", "")
-            if msg:
-                print(f"  ⏳ {msg}")
-        elif event_type == "suggestion":
-            _print_suggestion(event_data)
-        elif event_type == "error":
-            msg = event_data.get("message", "Unknown error")
-            print(f"\n  ❌ Error: {msg}", file=sys.stderr)
-            return 1
-        elif event_type in ("complete", "close"):
-            break
-        elif event_type == "ping":
-            continue
-
-    print("\n✅ Improve workflow complete.")
+            if event_type == "reasoning":
+                content = event_data.get("content", "")
+                if content:
+                    print(f"  💭 {content}")
+            elif event_type == "progress":
+                msg = event_data.get("message", "")
+                if msg:
+                    print(f"  ⏳ {msg}")
+            elif event_type == "suggestion":
+                _print_suggestion(event_data)
+            elif event_type == "error":
+                msg = event_data.get("message", "Unknown error")
+                print(f"\n  ❌ Error: {msg}", file=sys.stderr)
+                return 1
+            elif event_type in ("complete", "close"):
+                break
+            elif event_type == "ping":
+                continue
+    except Exception as exc:
+        print(f"Error: Lost connection to agent server during streaming: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
