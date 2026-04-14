@@ -97,6 +97,37 @@
           </div>
 
           <div id="settings-editor-list" class="grid grid-cols-2 gap-3"></div>
+
+          <!-- Custom command input — shown only when "Custom" is selected -->
+          <div id="settings-custom-cmd-row" class="hidden mt-4">
+            <p class="text-[12px] font-semibold mb-1.5" style="color:#434654">Custom command</p>
+            <p class="text-[11px] mb-2.5" style="color:#6b6f80">
+              CLI command used to open the worktree, e.g. <code class="font-mono">nvim</code>,
+              <code class="font-mono">emacs</code>, or a full path like
+              <code class="font-mono">/usr/local/bin/myed</code>.
+            </p>
+            <div class="flex gap-2">
+              <input
+                id="settings-custom-cmd-input"
+                type="text"
+                placeholder="e.g. cursor, nvim, /usr/bin/vim"
+                autocomplete="off"
+                spellcheck="false"
+                class="flex-1 text-[12px] px-3 py-2.5 rounded-lg font-mono"
+                style="border:1.5px solid rgba(195,198,214,0.5);background:#f9f9fb;color:#191c1e;outline:none"
+              />
+              <button
+                id="settings-custom-cmd-save"
+                class="flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-2 rounded-lg transition-all active:scale-95 shrink-0"
+                style="background:#003d9b;color:#fff"
+              >
+                Save
+              </button>
+            </div>
+            <p id="settings-custom-cmd-saved" class="text-[11px] mt-2 hidden" style="color:#1a7a4a">
+              Saved.
+            </p>
+          </div>
         </section>
 
         <!-- ══ AI ══ -->
@@ -346,7 +377,7 @@
 
 <script>
   import { CODE_EDITORS, DEFAULT_AGENT_MAX_ITERATIONS } from '../lib/constants.js';
-  import { getCodeEditor, setCodeEditor, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getAgentMaxIterations, setAgentMaxIterations } from '../lib/agents.js';
+  import { getCodeEditor, setCodeEditor, getCustomEditorCmd, setCustomEditorCmd, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getAgentMaxIterations, setAgentMaxIterations } from '../lib/agents.js';
   import { clearHistory } from '../lib/implementer.js';
   import { clearCardLanes } from '../lib/board.js';
 
@@ -387,6 +418,10 @@
         renderEditorGrid();
       });
     });
+
+    // Show or hide the custom command row
+    const customRow = document.getElementById('settings-custom-cmd-row');
+    if (customRow) customRow.classList.toggle('hidden', current.id !== 'custom');
   }
 
   // ── AI provider grid ──────────────────────────────────────────
@@ -408,6 +443,19 @@
         setGlobalAiProvider((btn as HTMLButtonElement).dataset.aiProvider ?? 'claude');
         renderAiProviderGrid();
       });
+    });
+  }
+
+  function initCustomCmdSection() {
+    const input = document.getElementById('settings-custom-cmd-input') as HTMLInputElement;
+    if (input) input.value = getCustomEditorCmd();
+
+    document.getElementById('settings-custom-cmd-save')?.addEventListener('click', () => {
+      setCustomEditorCmd(input.value.trim());
+      const msg = document.getElementById('settings-custom-cmd-saved');
+      if (!msg) return;
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 2000);
     });
   }
 
@@ -511,6 +559,7 @@
 
   document.addEventListener('open-settings-panel', () => {
     renderEditorGrid();
+    initCustomCmdSection();
     initAiSection();
     initGithubSection();
     showSection('editor');
