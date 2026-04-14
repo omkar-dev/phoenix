@@ -53,6 +53,15 @@ export const CODE_EDITORS = [
   { id: 'zed', name: 'Zed', cmd: 'zed', icon: 'bolt' },
 ];
 
+export const CODING_AGENTS = [
+  { id: 'claude-code', name: 'Claude Code', cmd: 'claude', color: '#d97706', bg: '#fef3c7', symbol: '⬛' },
+  { id: 'cursor',      name: 'Cursor',      cmd: 'cursor', color: '#6d28d9', bg: '#f5f3ff', symbol: '⬡' },
+  { id: 'windsurf',    name: 'Windsurf',    cmd: 'windsurf', color: '#0ea5e9', bg: '#e0f2fe', symbol: '🌊' },
+  { id: 'aider',       name: 'Aider',       cmd: 'aider',  color: '#16a34a', bg: '#dcfce7', symbol: '⚡' },
+  { id: 'openhands',   name: 'OpenHands',   cmd: 'openhands', color: '#003d9b', bg: '#dae2ff', symbol: '🤝' },
+  { id: 'custom',      name: 'Custom',      cmd: '',       color: '#737685', bg: '#f4f5f8', symbol: '⚙' },
+];
+
 // ── Token pricing (USD per 1 million tokens, input / output) ──
 export const MODEL_COSTS = {
   'claude-opus-4-6':   { input: 15.00, output: 75.00 },

@@ -53,6 +53,13 @@
         Code Editor
       </button>
       <button
+        data-settings-nav="coding-agent"
+        class="settings-nav flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold w-full text-left transition-all"
+      >
+        <span class="material-symbols-outlined" style="font-size:16px">smart_toy</span>
+        Coding Agent
+      </button>
+      <button
         data-settings-nav="ai"
         class="settings-nav flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold w-full text-left transition-all"
       >
@@ -97,6 +104,58 @@
           </div>
 
           <div id="settings-editor-list" class="grid grid-cols-2 gap-3"></div>
+        </section>
+
+        <!-- ══ Coding Agent ══ -->
+        <section id="settings-section-coding-agent" class="hidden">
+          <div class="mb-5">
+            <h2
+              class="text-lg font-bold tracking-tight"
+              style="color:#191c1e;font-family:'Manrope',sans-serif"
+            >
+              Coding Agent
+            </h2>
+            <p class="text-[12px] mt-0.5 max-w-md leading-relaxed" style="color:#6b6f80">
+              Choose which AI coding agent to launch when opening a PR branch. Select a preset or
+              enter your own custom command.
+            </p>
+          </div>
+
+          <div id="settings-coding-agent-list" class="grid grid-cols-2 gap-3"></div>
+
+          <!-- Custom command row — shown only when "Custom" tile is selected -->
+          <div
+            id="settings-coding-agent-custom-row"
+            class="hidden mt-4 rounded-xl p-4 space-y-3"
+            style="background:#ffffff;border:1.5px solid rgba(195,198,214,0.4)"
+          >
+            <p class="text-[12px] font-semibold" style="color:#434654">Custom command</p>
+            <p class="text-[11px]" style="color:#6b6f80">
+              Enter the CLI command used to open the PR branch directory (e.g.
+              <code class="font-mono">my-agent</code> or <code class="font-mono">aider</code>).
+            </p>
+            <div class="flex gap-2">
+              <input
+                id="coding-agent-custom-cmd-input"
+                type="text"
+                placeholder="e.g. my-agent"
+                autocomplete="off"
+                spellcheck="false"
+                class="flex-1 text-[12px] px-3 py-2.5 rounded-lg font-mono"
+                style="border:1.5px solid rgba(195,198,214,0.5);background:#f9f9fb;color:#191c1e;outline:none"
+              />
+              <button
+                id="coding-agent-custom-cmd-save"
+                class="flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-2 rounded-lg transition-all active:scale-95 shrink-0"
+                style="background:#003d9b;color:#fff"
+              >
+                Save
+              </button>
+            </div>
+            <p id="coding-agent-custom-cmd-saved-msg" class="text-[11px] hidden" style="color:#1a7a4a">
+              Saved.
+            </p>
+          </div>
         </section>
 
         <!-- ══ AI ══ -->
@@ -345,8 +404,8 @@
 </style>
 
 <script>
-  import { CODE_EDITORS, DEFAULT_AGENT_MAX_ITERATIONS } from '../lib/constants.js';
-  import { getCodeEditor, setCodeEditor, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getAgentMaxIterations, setAgentMaxIterations } from '../lib/agents.js';
+  import { CODE_EDITORS, CODING_AGENTS, DEFAULT_AGENT_MAX_ITERATIONS } from '../lib/constants.js';
+  import { getCodeEditor, setCodeEditor, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getAgentMaxIterations, setAgentMaxIterations, getCodingAgent, setCodingAgent, getCustomCodingAgentCmd, setCustomCodingAgentCmd } from '../lib/agents.js';
   import { clearHistory } from '../lib/implementer.js';
   import { clearCardLanes } from '../lib/board.js';
 
@@ -386,6 +445,54 @@
         setCodeEditor(btn.dataset.editorId);
         renderEditorGrid();
       });
+    });
+  }
+
+  // ── Coding agent grid ─────────────────────────────────────────
+  function renderCodingAgentGrid() {
+    const list = document.getElementById('settings-coding-agent-list');
+    const customRow = document.getElementById('settings-coding-agent-custom-row');
+    if (!list) return;
+    const current = getCodingAgent();
+    list.innerHTML = CODING_AGENTS.map((a) => {
+      const selected = a.id === current.id;
+      return `
+        <button data-coding-agent-id="${a.id}"
+          class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-left transition-all"
+          style="
+            background:${selected ? a.bg : '#ffffff'};
+            border:1.5px solid ${selected ? a.color + '40' : 'rgba(195,198,214,0.4)'};
+          ">
+          <span class="text-lg w-7 text-center shrink-0" style="color:${a.color}">${a.symbol}</span>
+          <span class="text-[13px] font-semibold flex-1" style="color:${selected ? a.color : '#434654'}">${a.name}</span>
+          ${selected ? `<span class="material-symbols-outlined shrink-0" style="font-size:16px;color:${a.color}">check</span>` : ''}
+        </button>`;
+    }).join('');
+
+    list.querySelectorAll('[data-coding-agent-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setCodingAgent((btn as HTMLButtonElement).dataset.codingAgentId ?? '');
+        renderCodingAgentGrid();
+      });
+    });
+
+    if (customRow) {
+      customRow.classList.toggle('hidden', current.id !== 'custom');
+    }
+  }
+
+  function initCodingAgentSection() {
+    renderCodingAgentGrid();
+
+    const input = document.getElementById('coding-agent-custom-cmd-input') as HTMLInputElement;
+    if (input) input.value = getCustomCodingAgentCmd();
+
+    document.getElementById('coding-agent-custom-cmd-save')?.addEventListener('click', () => {
+      setCustomCodingAgentCmd(input?.value ?? '');
+      const msg = document.getElementById('coding-agent-custom-cmd-saved-msg');
+      if (!msg) return;
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 2000);
     });
   }
 
@@ -462,7 +569,7 @@
   }
 
   // ── Nav switching ─────────────────────────────────────────────
-  const SECTIONS = ['editor', 'ai', 'github', 'history'];
+  const SECTIONS = ['editor', 'coding-agent', 'ai', 'github', 'history'];
 
   function showSection(name: string) {
     document.querySelectorAll('[data-settings-nav]').forEach((btn) => {
@@ -511,6 +618,7 @@
 
   document.addEventListener('open-settings-panel', () => {
     renderEditorGrid();
+    initCodingAgentSection();
     initAiSection();
     initGithubSection();
     showSection('editor');

@@ -1,4 +1,4 @@
-import { LANE_ACTIONS, CODE_EDITORS, DEFAULT_AGENT_MAX_ITERATIONS } from './constants.js';
+import { LANE_ACTIONS, CODE_EDITORS, CODING_AGENTS, DEFAULT_AGENT_MAX_ITERATIONS } from './constants.js';
 import { AGENT_BASE_URL } from './config.js';
 import { nanoid } from 'nanoid';
 
@@ -163,6 +163,36 @@ export function getCodeEditor() {
 
 export function setCodeEditor(id) {
   localStorage.setItem('pnx_code_editor', id);
+}
+
+// ── Coding agent preference ───────────────────────────────────
+
+export function getCodingAgent() {
+  const id = localStorage.getItem('pnx_coding_agent') ?? CODING_AGENTS[0].id;
+  return CODING_AGENTS.find((a) => a.id === id) ?? CODING_AGENTS[0];
+}
+
+export function setCodingAgent(id) {
+  localStorage.setItem('pnx_coding_agent', id);
+}
+
+export function getCustomCodingAgentCmd() {
+  return localStorage.getItem('pnx_coding_agent_custom_cmd') ?? '';
+}
+
+export function setCustomCodingAgentCmd(cmd) {
+  if (cmd) localStorage.setItem('pnx_coding_agent_custom_cmd', cmd.trim());
+  else localStorage.removeItem('pnx_coding_agent_custom_cmd');
+}
+
+/**
+ * Returns the effective CLI command for the selected coding agent.
+ * When the "custom" agent is selected, falls back to the stored custom command.
+ */
+export function getCodingAgentCmd() {
+  const agent = getCodingAgent();
+  if (agent.id === 'custom') return getCustomCodingAgentCmd();
+  return agent.cmd;
 }
 
 // ── Lane action resolver ──────────────────────────────────────
