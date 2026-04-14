@@ -28,8 +28,8 @@ cd agent && pytest tests/test_file.py::test_name  # Run a single test
 ```bash
 make lint             # Lint both Python and frontend
 make lint-python      # ruff check agent/
-make lint-frontend    # eslint src/
-make format           # Auto-format everything
+make lint-frontend    # eslint . (via npm run lint)
+make format-frontend  # prettier --write . (via npm run format)
 make format-python    # ruff format agent/
 make format-frontend  # prettier --write src/
 make typecheck        # astro check (frontend types)
