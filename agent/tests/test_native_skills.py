@@ -95,6 +95,14 @@ def test_load_skill_template_reserved(skill_dir):
         native_skills.load_skill("SKILL_TEMPLATE")
 
 
+def test_load_skill_path_traversal_rejected(skill_dir):
+    with pytest.raises(FileNotFoundError):
+        native_skills.load_skill("../../etc/shadow")
+
+    with pytest.raises(FileNotFoundError):
+        native_skills.load_skill("subdir/skill")
+
+
 # ── attach_skills ─────────────────────────────────────────────────────────────
 
 def test_attach_skills_single(skill_dir):

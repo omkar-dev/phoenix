@@ -77,6 +77,8 @@ def load_skill(name: str) -> str:
         FileNotFoundError: if no skill with that name exists, or if *name*
             matches a reserved meta-file (``README``, ``SKILL_TEMPLATE``).
     """
+    if Path(name).name != name:
+        raise FileNotFoundError(f"Skill {name!r} not found in {_SKILLS_DIR}")
     candidate = _SKILLS_DIR / f"{name}.md"
     if candidate.name in _META_FILES or not candidate.exists():
         raise FileNotFoundError(f"Skill {name!r} not found in {_SKILLS_DIR}")
