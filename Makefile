@@ -1,6 +1,6 @@
 .PHONY: install install-frontend install-backend dev dev-frontend dev-backend \
         test lint lint-python lint-frontend format format-python format-frontend \
-        typecheck build clean
+        typecheck build clean formula-sha
 
 # ── Install ───────────────────────────────────────────────────────────────────
 
@@ -72,3 +72,23 @@ build:
 
 clean:
 	rm -rf dist/ .astro/ agent/__pycache__ agent/.pytest_cache agent/.coverage
+
+# ── Homebrew formula maintenance ──────────────────────────────────────────────
+# Prints the sha256 of the GitHub release tarball for a given tag (default: the
+# version declared in agent/pyproject.toml).  Use the output to update the
+# sha256 line in Formula/phoenix.rb when cutting a new release.
+#
+# Usage:
+#   make formula-sha                  # uses version from pyproject.toml
+#   make formula-sha TAG=v5.1.0       # override tag
+
+formula-sha:
+	$(eval TAG ?= v$(shell grep '^version' agent/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/'))
+	@echo "Computing sha256 for tag $(TAG)…"
+	@curl -sL "https://github.com/omkar-dev/phoenix/archive/refs/tags/$(TAG).tar.gz" \
+	  | shasum -a 256 | awk '{print $$1}'
+
+formula-sha:
+	@echo "Computing sha256 for tag $(TAG)…"
+	@curl -sL "https://github.com/omkar-dev/phoenix/archive/refs/tags/$(TAG).tar.gz" \
+	  | shasum -a 256 | awk '{print $$1}'
