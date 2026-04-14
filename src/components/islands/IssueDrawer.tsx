@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'preact/hooks';
 import { drawerSignal, closeDrawer, setDrawerTab, runsSignal, logsSignal, suggestionsSignal, dismissSuggestion } from '../../lib/signals.js';
 import { triggerImplement, triggerAddressPRComments, cancelRun, pushRun } from '../../scripts/run-dispatcher.js';
 import { updateIssue, fetchIssueComments, createIssueComment, fetchOrgMembers, fetchRepoLabels, createRepoLabel, fetchPRReviewThreads } from '../../lib/github-api.js';
-import { getAgents, getTeams, getCodeEditor, getIssueTeam, setIssueTeam } from '../../lib/agents.js';
+import { getAgents, getTeams, getCodeEditor, getIssueTeam, setIssueTeam, getNixScripts, saveNixScript, removeNixScript } from '../../lib/agents.js';
 import { AGENT_BASE_URL } from '../../lib/config.js';
 import { state } from '../../scripts/state.js';
 import { renderBoard } from '../../lib/board.js';
@@ -865,6 +865,147 @@ function LabelsEditor({
   );
 }
 
+// ── Nix Scripts Editor ────────────────────────────────────────────────────────
+
+interface NixScript {
+  id: string;
+  script: string;
+}
+
+function NixScriptsEditor({ repoFullName }: { repoFullName: string }) {
+  const [scripts, setScripts] = useState<NixScript[]>(() => getNixScripts(repoFullName));
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState('');
+
+  function refresh() {
+    setScripts(getNixScripts(repoFullName));
+  }
+
+  function handleAdd() {
+    const id = crypto.randomUUID();
+    saveNixScript(repoFullName, { id, script: '' });
+    refresh();
+    setEditingId(id);
+    setEditVal('');
+  }
+
+  function handleCommit(id: string) {
+    const trimmed = editVal.trim();
+    if (trimmed) {
+      saveNixScript(repoFullName, { id, script: trimmed });
+    } else {
+      removeNixScript(repoFullName, id);
+    }
+    refresh();
+    setEditingId(null);
+  }
+
+  function handleStartEdit(s: NixScript) {
+    setEditingId(s.id);
+    setEditVal(s.script);
+  }
+
+  function handleRemove(id: string) {
+    removeNixScript(repoFullName, id);
+    refresh();
+  }
+
+  return (
+    <div>
+      <div class="flex items-center gap-1.5 mb-2">
+        <span class="material-symbols-outlined" style="font-size:14px;color:#003d9b">terminal</span>
+        <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 flex-1">
+          Nix Scripts
+        </p>
+        <button
+          onClick={handleAdd}
+          class="flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded transition-colors hover:bg-surface-container"
+          style="color:#003d9b;border:1px solid rgba(0,61,155,0.3)"
+        >
+          <span class="material-symbols-outlined" style="font-size:11px">add</span>
+          Add
+        </button>
+      </div>
+
+      {scripts.length === 0 && (
+        <p class="text-[11px] italic text-on-surface-variant/40 px-1">
+          No scripts — click Add to run commands when opening in editor.
+        </p>
+      )}
+
+      <div class="flex flex-col gap-2">
+        {scripts.map((s, idx) => (
+          <div
+            key={s.id}
+            class="rounded-lg overflow-hidden"
+            style="border:1px solid rgba(195,198,214,0.6)"
+          >
+            {editingId === s.id ? (
+              <div>
+                <textarea
+                  class="w-full font-mono text-xs text-on-surface p-2 resize-none outline-none"
+                  style="min-height:64px;background:#f8f9ff;box-shadow:inset 0 0 0 2px #003d9b;border:none"
+                  autoFocus
+                  value={editVal}
+                  placeholder="e.g. nix-shell --run 'npm install'"
+                  onInput={(e) => setEditVal((e.target as HTMLTextAreaElement).value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && e.ctrlKey) {
+                      e.preventDefault();
+                      handleCommit(s.id);
+                    }
+                    if (e.key === 'Escape') {
+                      if (!s.script) removeNixScript(repoFullName, s.id);
+                      refresh();
+                      setEditingId(null);
+                    }
+                  }}
+                />
+                <div class="flex items-center justify-end gap-1.5 px-2 py-1" style="background:#f0f2ff">
+                  <span class="text-[10px] text-on-surface-variant/40">Ctrl+Enter to save · Esc to cancel</span>
+                  <button
+                    onClick={() => handleCommit(s.id)}
+                    class="text-[10px] font-semibold px-2 py-0.5 rounded text-on-primary transition-colors"
+                    style="background:#003d9b"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div class="flex items-start gap-2 px-2 py-2">
+                <span class="text-[10px] font-bold text-on-surface-variant/40 w-4 shrink-0 pt-0.5">
+                  {idx + 1}
+                </span>
+                <code class="flex-1 font-mono text-xs text-on-surface whitespace-pre-wrap break-all leading-relaxed">
+                  {s.script || <span class="italic text-on-surface-variant/40">(empty)</span>}
+                </code>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => handleStartEdit(s)}
+                    class="p-0.5 rounded hover:bg-surface-container transition-colors text-on-surface-variant"
+                    title="Edit script"
+                  >
+                    <span class="material-symbols-outlined" style="font-size:13px">edit</span>
+                  </button>
+                  <button
+                    onClick={() => handleRemove(s.id)}
+                    class="p-0.5 rounded hover:bg-red-50 transition-colors"
+                    style="color:#ba1a1a"
+                    title="Remove script"
+                  >
+                    <span class="material-symbols-outlined" style="font-size:13px">delete</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Details Tab ───────────────────────────────────────────────────────────────
 
 function DetailsTab({ issue }: { issue: Issue }) {
@@ -877,6 +1018,7 @@ function DetailsTab({ issue }: { issue: Issue }) {
   const [applyLoading, setApplyLoading] = useState(false);
   const [copyLabel, setCopyLabel] = useState<'Copy Markdown' | 'Copied!'>('Copy Markdown');
   const [openEditorLoading, setOpenEditorLoading] = useState(false);
+  const [openEditorError, setOpenEditorError] = useState<string | null>(null);
   const [pushLoading, setPushLoading] = useState(false);
   const [localAssignees, setLocalAssignees] = useState<Assignee[]>(issue.assignees ?? []);
   const [localLabels, setLocalLabels] = useState<Label[]>(issue.labels ?? []);
@@ -959,6 +1101,7 @@ function DetailsTab({ issue }: { issue: Issue }) {
     const runs = runsSignal.value as Map<number, Run>;
     const run = runs.get(issue.number);
     setOpenEditorLoading(true);
+    setOpenEditorError(null);
     try {
       if (run?.worktreePath) {
         await fetch(`${AGENT_BASE_URL}/open-editor`, {
@@ -967,16 +1110,26 @@ function DetailsTab({ issue }: { issue: Issue }) {
           body: JSON.stringify({ path: run.worktreePath, cmd: editor.cmd }),
         });
       } else {
-        await fetch(`${AGENT_BASE_URL}/worktree`, {
+        const nixScripts = (state.repoFullName ? getNixScripts(state.repoFullName) : []).map(
+          (s: NixScript) => s.script
+        );
+        const res = await fetch(`${AGENT_BASE_URL}/worktree`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             issue_number: issue.number,
             repo_full_name: state.repoFullName,
             editor_cmd: editor.cmd,
+            nix_scripts: nixScripts,
           }),
         });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ detail: 'Unknown error' }));
+          setOpenEditorError(body.detail ?? 'Script execution failed');
+        }
       }
+    } catch (err: any) {
+      setOpenEditorError(err.message ?? 'Failed to open editor');
     } finally {
       setOpenEditorLoading(false);
     }
@@ -1300,29 +1453,53 @@ function DetailsTab({ issue }: { issue: Issue }) {
         </div>
       )}
 
+      {/* Nix Scripts */}
+      {state.repoFullName && (
+        <NixScriptsEditor repoFullName={state.repoFullName as string} />
+      )}
+
       {/* Action buttons */}
-      <div class="flex gap-2">
-        <button
-          disabled={openEditorLoading}
-          onClick={handleOpenEditor}
-          class="flex items-center justify-center gap-1.5 flex-1 text-xs font-semibold py-2.5 rounded-lg transition-all active:scale-95"
-          style="background:#e8ecf5;color:#434654;border:1px solid rgba(195,198,214,0.5)"
-        >
-          <span class="material-symbols-outlined" style="font-size:14px">
-            {openEditorLoading ? 'autorenew' : 'code'}
-          </span>
-          {openEditorLoading ? 'Opening…' : 'Open in Editor'}
-        </button>
-        {!isLocal && (
-          <a
-            href={issue.html_url}
-            target="_blank"
-            class="flex items-center justify-center gap-1.5 flex-1 text-on-primary text-xs font-semibold py-2.5 rounded-lg transition-all active:scale-95"
-            style="background:linear-gradient(135deg,#003d9b,#0052cc)"
+      <div class="flex flex-col gap-2">
+        <div class="flex gap-2">
+          <button
+            disabled={openEditorLoading}
+            onClick={handleOpenEditor}
+            class="flex items-center justify-center gap-1.5 flex-1 text-xs font-semibold py-2.5 rounded-lg transition-all active:scale-95"
+            style="background:#e8ecf5;color:#434654;border:1px solid rgba(195,198,214,0.5)"
           >
-            <span class="material-symbols-outlined" style="font-size:14px">open_in_new</span>
-            View on GitHub
-          </a>
+            <span class={`material-symbols-outlined${openEditorLoading ? ' animate-spin' : ''}`} style="font-size:14px">
+              {openEditorLoading ? 'autorenew' : 'code'}
+            </span>
+            {openEditorLoading ? 'Opening…' : 'Open in Editor'}
+          </button>
+          {!isLocal && (
+            <a
+              href={issue.html_url}
+              target="_blank"
+              class="flex items-center justify-center gap-1.5 flex-1 text-on-primary text-xs font-semibold py-2.5 rounded-lg transition-all active:scale-95"
+              style="background:linear-gradient(135deg,#003d9b,#0052cc)"
+            >
+              <span class="material-symbols-outlined" style="font-size:14px">open_in_new</span>
+              View on GitHub
+            </a>
+          )}
+        </div>
+        {openEditorError && (
+          <div
+            class="flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] leading-relaxed"
+            style="background:#fff1f0;border:1px solid #fca5a5;color:#ba1a1a"
+          >
+            <span class="material-symbols-outlined shrink-0 mt-0.5" style="font-size:14px">error_outline</span>
+            <pre class="whitespace-pre-wrap break-all flex-1 font-mono" style="font-size:10px">{openEditorError}</pre>
+            <button
+              onClick={() => setOpenEditorError(null)}
+              class="shrink-0 hover:opacity-70 transition-opacity"
+              title="Dismiss"
+              aria-label="Dismiss error"
+            >
+              <span class="material-symbols-outlined" style="font-size:14px">close</span>
+            </button>
+          </div>
         )}
       </div>
     </div>

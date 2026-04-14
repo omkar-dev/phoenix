@@ -164,6 +164,41 @@ export function setCodeEditor(id) {
   localStorage.setItem('pnx_code_editor', id);
 }
 
+// ── Nix scripts ───────────────────────────────────────────────
+
+const NIX_SCRIPTS_KEY = 'pnx_nix_scripts';
+
+function _getNixScriptsAll() {
+  try {
+    return JSON.parse(localStorage.getItem(NIX_SCRIPTS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/** Returns the list of `{ id, script }` objects saved for a repo. */
+export function getNixScripts(repoFullName) {
+  return _getNixScriptsAll()[repoFullName] ?? [];
+}
+
+/** Upserts a `{ id, script }` entry for the given repo. */
+export function saveNixScript(repoFullName, entry) {
+  const all = _getNixScriptsAll();
+  const list = all[repoFullName] ?? [];
+  const idx = list.findIndex((s) => s.id === entry.id);
+  if (idx > -1) list[idx] = entry;
+  else list.push({ ...entry, id: entry.id || crypto.randomUUID() });
+  all[repoFullName] = list;
+  localStorage.setItem(NIX_SCRIPTS_KEY, JSON.stringify(all));
+}
+
+/** Removes the script with the given id for the given repo. */
+export function removeNixScript(repoFullName, id) {
+  const all = _getNixScriptsAll();
+  all[repoFullName] = (all[repoFullName] ?? []).filter((s) => s.id !== id);
+  localStorage.setItem(NIX_SCRIPTS_KEY, JSON.stringify(all));
+}
+
 // ── Lane action resolver ──────────────────────────────────────
 
 /**
