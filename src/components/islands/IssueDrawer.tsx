@@ -882,6 +882,12 @@ function DetailsTab({ issue }: { issue: Issue }) {
   const [localAssignees, setLocalAssignees] = useState<Assignee[]>(issue.assignees ?? []);
   const [localLabels, setLocalLabels] = useState<Label[]>(issue.labels ?? []);
 
+  // Sync local state when the issue is updated externally (e.g. GitHub polling)
+  useEffect(() => { if (!editingTitle) setTitleVal(issue.title); }, [issue.title]);
+  useEffect(() => { if (!editingDesc) setDescVal(issue.body ?? ''); }, [issue.body]);
+  useEffect(() => { setLocalAssignees(issue.assignees ?? []); }, [issue.assignees]);
+  useEffect(() => { setLocalLabels(issue.labels ?? []); }, [issue.labels]);
+
   const labels = localLabels;
   const assignees = localAssignees;
   const dupList = state.duplicates.get(issue.number) ?? [];

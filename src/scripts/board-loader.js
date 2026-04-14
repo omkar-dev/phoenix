@@ -7,6 +7,7 @@ import { escHtml } from '../lib/formatters.js';
 import { state } from './state.js';
 import { getLocalIssues, promoteLocalIssue } from '../lib/local-issues.js';
 import { assignColumn } from '../lib/column-mapper.js';
+import { drawerSignal } from '../lib/signals.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -279,7 +280,7 @@ async function _pollGitHubChanges(repo) {
     state.allIssues.filter((i) => !i._local).map((i) => [i.number, i])
   );
 
-  // Detect label changes on existing issues
+  // Detect changes on existing issues (labels, title, body, assignees, etc.)
   for (const fresh of freshIssues) {
     if (isRecentlyMoved(fresh.number)) continue; // user just dragged — skip
 
@@ -291,12 +292,12 @@ async function _pollGitHubChanges(repo) {
       continue;
     }
 
-    const existingLabels = (existing.labels || []).map((l) => l.name).sort().join(',');
-    const freshLabels = (fresh.labels || []).map((l) => l.name).sort().join(',');
-    if (existingLabels !== freshLabels) {
+    // Use updated_at as the canonical change indicator — catches body, title,
+    // assignees, labels, milestone, and any other field change.
+    if (existing.updated_at !== fresh.updated_at) {
       const idx = state.allIssues.indexOf(existing);
-      // Preserve _projectStatus when updating labels
-      state.allIssues[idx] = { ...existing, labels: fresh.labels };
+      // Merge all fresh fields from GitHub while preserving Phoenix-internal metadata
+      state.allIssues[idx] = { ...fresh, _projectStatus: existing._projectStatus };
 
       const newCol = assignColumn(state.allIssues[idx]);
       const oldCol = assignColumn(existing);
@@ -335,6 +336,16 @@ async function _pollGitHubChanges(repo) {
   if (changed) {
     buildColumns();
     renderBoard(getFilters);
+
+    // If the drawer is open for an issue that was updated, refresh its reference
+    // so the Preact island re-renders with the latest data.
+    const drawerIssue = drawerSignal.peek()?.issue;
+    if (drawerIssue) {
+      const updated = state.allIssues.find((i) => i.number === drawerIssue.number);
+      if (updated && updated !== drawerIssue) {
+        drawerSignal.value = { ...drawerSignal.peek(), issue: updated };
+      }
+    }
   }
 }
 
