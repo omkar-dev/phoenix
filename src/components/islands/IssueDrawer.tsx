@@ -931,6 +931,8 @@ function DetailsTab({ issue }: { issue: Issue }) {
       });
       issue.title = suggestion.title;
       issue.body = newBody;
+      setTitleVal(suggestion.title);
+      setDescVal(newBody);
       renderBoard(getFilters);
       dismissSuggestion(issue.number);
     } catch (err: any) {
