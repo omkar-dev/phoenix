@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect, useCallback } from 'preact/hooks';
 import { teamsPanelOpenSignal, agentsSignal } from '../../lib/signals.js';
 import { getTeams, saveTeam, removeTeam } from '../../lib/agents.js';
-import { uuid } from '../../lib/formatters.js';
+import { nanoid } from 'nanoid';
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -588,7 +588,7 @@ function WorkflowCanvas({
 
   function addMcp() {
     if (!mcpDraft.name || !mcpDraft.url) return;
-    const mcp: MCP = { ...mcpDraft, id: uuid() };
+    const mcp: MCP = { ...mcpDraft, id: nanoid() };
     setMcpList((prev) => {
       const idx = prev.length + agentOrder.length;
       setNodePositions((pos) => ({
@@ -609,7 +609,7 @@ function WorkflowCanvas({
     setNameError('');
 
     const saved: Team = {
-      id: wfTeam?.id ?? uuid(),
+      id: wfTeam?.id ?? nanoid(),
       name: wfName.trim(),
       mode: wfMode,
       status: wfStage,

@@ -1,6 +1,6 @@
 import { LANE_ACTIONS, CODE_EDITORS } from './constants.js';
 import { AGENT_BASE_URL } from './config.js';
-import { uuid } from './formatters.js';
+import { nanoid } from 'nanoid';
 
 const DEFAULT_AGENTS = [
   {
@@ -62,7 +62,7 @@ export function saveAgent(agent) {
   const agents = getAgents();
   const idx = agents.findIndex((a) => a.id === agent.id);
   if (idx > -1) agents[idx] = agent;
-  else agents.push({ ...agent, id: agent.id || uuid() });
+  else agents.push({ ...agent, id: agent.id || nanoid() });
   localStorage.setItem('pnx_agents', JSON.stringify(agents));
 }
 
@@ -86,7 +86,7 @@ export function saveTeam(team) {
   const teams = getTeams();
   const idx = teams.findIndex((t) => t.id === team.id);
   if (idx > -1) teams[idx] = team;
-  else teams.push({ ...team, id: team.id || uuid() });
+  else teams.push({ ...team, id: team.id || nanoid() });
   localStorage.setItem('pnx_teams', JSON.stringify(teams));
 }
 

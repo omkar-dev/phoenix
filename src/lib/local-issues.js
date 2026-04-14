@@ -6,7 +6,7 @@
  * Local issues use negative issue numbers to avoid collisions with GitHub numbers.
  */
 
-import { uuid } from './formatters.js';
+import { nanoid } from 'nanoid';
 
 const STORAGE_KEY = 'pnx_local_board_issues';
 
@@ -49,7 +49,7 @@ export function addLocalIssue(repo, { title, body }) {
     updated_at: new Date().toISOString(),
     html_url: null,
     _local: true,
-    _localId: uuid(),
+    _localId: nanoid(),
   };
   data[repo].unshift(issue);
   _save(data);
