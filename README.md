@@ -43,17 +43,14 @@ See [src/ARCHITECTURE.md](src/ARCHITECTURE.md) for a deeper explanation of the f
 The quickest way to get Phoenix running on macOS (or Linux with [Linuxbrew](https://docs.brew.sh/Homebrew-on-Linux)):
 
 ```bash
-# 1. Add the tap
-brew tap omkar-dev/phoenix https://github.com/omkar-dev/phoenix
+# 1. Install (auto-taps and installs Python agent + Astro frontend in one step)
+brew install omkar-dev/phoenix/phoenix
 
-# 2. Install (installs Python agent + Astro frontend in one step)
-brew install phoenix
-
-# 3. Export credentials (or add them to ~/.zshrc / ~/.bashrc)
+# 2. Export credentials (or add them to ~/.zshrc / ~/.bashrc)
 export GITHUB_TOKEN="ghp_..."          # GitHub PAT — repo + pull_request:write scope
 export ANTHROPIC_API_KEY="sk-ant-..."  # Anthropic API key
 
-# 4. Launch everything
+# 3. Launch everything
 pnx
 ```
 
@@ -65,19 +62,19 @@ interactively on first run.
 
 > **Development snapshot** — while a stable release tag is pending, install from `HEAD`:
 > ```bash
-> brew install phoenix --HEAD
+> brew install omkar-dev/phoenix/phoenix --HEAD
 > ```
 
 ### Upgrade
 
 ```bash
-brew upgrade phoenix
+brew upgrade omkar-dev/phoenix/phoenix
 ```
 
 ### Uninstall
 
 ```bash
-brew uninstall phoenix
+brew uninstall omkar-dev/phoenix/phoenix
 brew untap omkar-dev/phoenix
 ```
 
@@ -85,8 +82,8 @@ brew untap omkar-dev/phoenix
 
 ```bash
 # 1. Clone
-git clone https://github.com/omkar-dev/phoenix.git
-cd phoenix
+git clone https://github.com/omkar-dev/homebrew-phoenix.git
+cd homebrew-phoenix
 
 # 2. Configure the agent
 cp agent/.env.example agent/.env

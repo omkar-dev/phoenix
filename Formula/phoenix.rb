@@ -1,16 +1,16 @@
 class Phoenix < Formula
   desc "AI-powered GitHub Kanban board with one-click AI agent implementation"
-  homepage "https://github.com/omkar-dev/phoenix"
+  homepage "https://github.com/omkar-dev/homebrew-phoenix"
   license "AGPL-3.0-only"
 
   # Stable install — update url + sha256 each release:
   #   brew bump-formula-pr --url=... --sha256=...
-  url "https://github.com/omkar-dev/phoenix/archive/refs/tags/v5.0.0.tar.gz"
+  url "https://github.com/omkar-dev/homebrew-phoenix/archive/refs/tags/v5.0.0.tar.gz"
   sha256 "REPLACE_WITH_SHA256_OF_RELEASE_TARBALL"
   version "5.0.0"
 
-  # Development install: brew install phoenix --HEAD
-  head "https://github.com/omkar-dev/phoenix.git", branch: "main"
+  # Development install: brew install omkar-dev/phoenix/phoenix --HEAD
+  head "https://github.com/omkar-dev/homebrew-phoenix.git", branch: "main"
 
   depends_on "git"
   depends_on "node"
