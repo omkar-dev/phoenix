@@ -4,7 +4,7 @@ import { assignColumn } from './column-mapper.js';
 import { runStore, refine, cancelRun, pushRun, prUnresolvedStore, prConflictsStore } from './implementer.js';
 import { getLaneAction, getCodeEditor } from './agents.js';
 import { AGENT_BASE_URL as AGENT_BASE } from './config.js';
-import { createIssue, updateIssue, ensureRepoLabel, updateProjectItemStatus } from './github-api.js';
+import { createIssue, updateIssue, ensureRepoLabel, updateProjectItemStatus, fetchCurrentUser } from './github-api.js';
 
 // ── Board toast ────────────────────────────────────────────────────────────────
 function _showToast(msg) {
@@ -578,6 +578,40 @@ function _renderRunBar(run, colId, issue) {
     </div>`;
 }
 
+/**
+ * Log the movement to SQLite (with actor) and auto-assign the issue to the
+ * current GitHub user when the destination is a post-triage column.
+ * Runs fire-and-forget; all errors are swallowed.
+ */
+async function _handleMove(num, fromCol, toCol) {
+  const user = await fetchCurrentUser().catch(() => null);
+
+  // Log movement to SQLite, including the actor when available
+  fetch(`${AGENT_BASE}/movements`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repo: _state.repoFullName,
+      issue_number: num,
+      from_column: fromCol,
+      to_column: toCol,
+      actor: user?.login ?? null,
+    }),
+  }).catch(() => {});
+
+  // Auto-assign: only for post-triage destinations and when a user is known
+  if (toCol === 'triage' || !user?.login) return;
+  const issue = _state.allIssues.find((i) => i.number === num);
+  if (!issue || issue._local) return;
+
+  const issueRepo = _state.issueSourceRepo || _state.repoFullName;
+  try {
+    const updated = await updateIssue(issueRepo, num, { assignees: [user.login] });
+    const idx = _state.allIssues.findIndex((i) => i.number === num);
+    if (idx !== -1) _state.allIssues[idx] = { ..._state.allIssues[idx], assignees: updated.assignees };
+  } catch {}
+}
+
 export function moveCard(num, from, to, getFilters) {
   const list = _state.columns[from].issues;
   const idx = list.findIndex((i) => i.number === num);
@@ -588,19 +622,8 @@ export function moveCard(num, from, to, getFilters) {
   if (_state.repoFullName) _saveCardLane(_state.repoFullName, num, to);
   // Mark as recently moved so the background poll doesn't fight this change
   _recentlyMoved.set(num, Date.now());
-  // Log movement to SQLite (fire-and-forget)
-  if (_state.repoFullName) {
-    fetch(`${AGENT_BASE}/movements`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        repo: _state.repoFullName,
-        issue_number: num,
-        from_column: from,
-        to_column: to,
-      }),
-    }).catch(() => {});
-  }
+  // Log movement, capture actor, and auto-assign post-triage (fire-and-forget)
+  if (_state.repoFullName) _handleMove(num, from, to);
   // Sync status label to GitHub (fire-and-forget)
   _syncStatusToGitHub(num, to);
 }

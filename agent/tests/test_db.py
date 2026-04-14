@@ -57,6 +57,31 @@ async def test_log_and_list_movements(tmp_db):
     assert movements[0]["issue_number"] == 42
     assert movements[0]["from_column"] == "triage"
     assert movements[0]["to_column"] == "todo"
+    assert movements[0]["actor"] is None
+
+
+async def test_log_movement_with_actor(tmp_db):
+    await db.init_db()
+    await db.log_movement("owner/repo", 7, "triage", "in_progress", actor="octocat")
+    movements = await db.list_movements("owner/repo")
+    assert len(movements) == 1
+    assert movements[0]["actor"] == "octocat"
+
+
+async def test_log_movement_actor_defaults_to_none(tmp_db):
+    await db.init_db()
+    await db.log_movement("owner/repo", 3, "todo", "in_progress")
+    movements = await db.list_movements("owner/repo")
+    assert movements[0]["actor"] is None
+
+
+async def test_init_db_migration_adds_actor_column(tmp_db):
+    """init_db must succeed even when actor column already exists (idempotent)."""
+    await db.init_db()
+    await db.init_db()  # second call should not raise
+    await db.log_movement("owner/repo", 1, "triage", "todo", actor="dev")
+    movements = await db.list_movements("owner/repo")
+    assert movements[0]["actor"] == "dev"
 
 
 async def test_append_and_get_run_logs(tmp_db):

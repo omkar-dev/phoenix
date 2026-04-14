@@ -82,6 +82,7 @@ class MovementBody(BaseModel):
     issue_number: int
     from_column: str
     to_column: str
+    actor: str | None = None
 
 
 class PushDirectRequest(BaseModel):
