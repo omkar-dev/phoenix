@@ -79,3 +79,33 @@ async def test_movements_log(client):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["issue_number"] == 10
+
+
+async def test_movements_log_with_actor(client):
+    resp = await client.post("/movements", json={
+        "repo": "owner/repo",
+        "issue_number": 11,
+        "from_column": "triage",
+        "to_column": "in_progress",
+        "actor": "octocat",
+    })
+    assert resp.status_code == 200
+    assert resp.status_code == 204
+    resp = await client.get("/movements?repo=owner/repo")
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["actor"] == "octocat"
+
+
+async def test_movements_log_without_actor_is_null(client):
+    resp = await client.post("/movements", json={
+        "repo": "owner/repo",
+        "issue_number": 12,
+        "from_column": "todo",
+        "to_column": "in_progress",
+    })
+    assert resp.status_code == 200
+
+    assert resp.status_code == 204
+    data = resp.json()
+    assert data[0]["actor"] is None

@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS issue_movements (
     issue_number INTEGER NOT NULL,
     from_column  TEXT NOT NULL,
     to_column    TEXT NOT NULL,
-    moved_at     TEXT NOT NULL
+    moved_at     TEXT NOT NULL,
+    actor        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_movements_repo ON issue_movements(repo);
 
@@ -53,7 +54,12 @@ async def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_DDL)
-        await db.commit()
+        # Migration: add actor column to existing issue_movements tables.
+        try:
+            await db.execute("ALTER TABLE issue_movements ADD COLUMN actor TEXT")
+            await db.commit()
+        except Exception:
+            pass  # column already exists
 
 
 # ── Repos ──────────────────────────────────────────────────────────────────────
@@ -96,16 +102,17 @@ async def delete_repo(full_name: str) -> None:
 # ── Issue movements ────────────────────────────────────────────────────────────
 
 async def log_movement(
-    repo: str, issue_number: int, from_column: str, to_column: str
+    repo: str, issue_number: int, from_column: str, to_column: str,
+    actor: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
-            INSERT INTO issue_movements (repo, issue_number, from_column, to_column, moved_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO issue_movements (repo, issue_number, from_column, to_column, moved_at, actor)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (repo, issue_number, from_column, to_column, now),
+            (repo, issue_number, from_column, to_column, now, actor),
         )
         await db.commit()
 

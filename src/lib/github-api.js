@@ -1,3 +1,25 @@
+let _currentUser = null;
+
+/**
+ * Fetch the authenticated GitHub user. Result is cached for the lifetime of
+ * the page so repeated calls (e.g. on every card move) are free.
+ * Returns null when no token is stored or the request fails.
+ * @returns {Promise<{login:string, avatar_url:string, id:number}|null>}
+ */
+export async function fetchCurrentUser() {
+  if (_currentUser) return _currentUser;
+  const token = localStorage.getItem('gh_token');
+  if (!token) return null;
+  try {
+    const res = await fetch('https://api.github.com/user', { headers: buildHeaders(token) });
+    if (!res.ok) return null;
+    _currentUser = await res.json();
+    return _currentUser;
+  } catch {
+    return null;
+  }
+}
+
 function buildHeaders(token) {
   return {
     Accept: 'application/vnd.github+json',

@@ -9,7 +9,7 @@ router = APIRouter()
 
 @router.post("/movements", status_code=204)
 async def record_movement(body: MovementBody) -> None:
-    await _db.log_movement(body.repo, body.issue_number, body.from_column, body.to_column)
+    await _db.log_movement(body.repo, body.issue_number, body.from_column, body.to_column, body.actor)
 
 
 @router.get("/movements")
