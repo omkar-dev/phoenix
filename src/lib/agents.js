@@ -156,9 +156,23 @@ export function setAgentMaxIterations(n) {
 
 // ── Code editor preference ────────────────────────────────────
 
+export function getCustomEditorCmd() {
+  return localStorage.getItem('pnx_custom_editor_cmd') || '';
+}
+
+export function setCustomEditorCmd(cmd) {
+  if (cmd) localStorage.setItem('pnx_custom_editor_cmd', cmd.trim());
+  else localStorage.removeItem('pnx_custom_editor_cmd');
+}
+
 export function getCodeEditor() {
   const id = localStorage.getItem('pnx_code_editor') ?? 'vscode';
-  return CODE_EDITORS.find((e) => e.id === id) ?? CODE_EDITORS[0];
+  const editor = CODE_EDITORS.find((e) => e.id === id) ?? CODE_EDITORS[0];
+  if (editor.id === 'custom') {
+    const customCmd = getCustomEditorCmd();
+    return { ...editor, cmd: customCmd || 'code' };
+  }
+  return editor;
 }
 
 export function setCodeEditor(id) {
