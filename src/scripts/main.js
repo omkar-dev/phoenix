@@ -2,7 +2,7 @@ import { initBoard, renderBoard } from '../lib/board.js';
 import { onRunUpdate } from '../lib/implementer.js';
 import { AGENT_BASE_URL, SEMANTIC_BASE_URL } from '../lib/config.js';
 import { state } from './state.js';
-import { initBoardLoader, showState, loadIssues, getFilters } from './board-loader.js';
+import { initBoardLoader, showState, loadIssues, getFilters, clearBoard } from './board-loader.js';
 import { initTokenRepo } from './token-repo.js';
 import { triggerImplement } from './run-dispatcher.js';
 import {
@@ -14,6 +14,14 @@ import {
 } from '../lib/signals.js';
 import { bus, Events } from '../lib/event-bus.js';
 import { initFavicon } from '../lib/favicon.js';
+import { effect } from '@preact/signals';
+import {
+  pushPanel,
+  clearPanelFromUrl,
+  getUrlPanel,
+  isRestoring,
+  initRouter,
+} from './router.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -46,6 +54,77 @@ $('teams-btn')?.addEventListener('click', () => {
 });
 $('planning-btn')?.addEventListener('click', () => {
   planningPanelOpenSignal.value = !planningPanelOpenSignal.value;
+});
+
+// ── Router: push/clear URL when signal-based panels open/close ─
+effect(() => {
+  if (isRestoring()) return;
+  if (planningPanelOpenSignal.value) {
+    pushPanel('planning');
+  } else if (getUrlPanel() === 'planning') {
+    clearPanelFromUrl();
+  }
+});
+
+effect(() => {
+  if (isRestoring()) return;
+  if (agentsPanelOpenSignal.value) {
+    pushPanel('agents');
+  } else if (getUrlPanel() === 'agents') {
+    clearPanelFromUrl();
+  }
+});
+
+effect(() => {
+  if (isRestoring()) return;
+  if (teamsPanelOpenSignal.value) {
+    pushPanel('teams');
+  } else if (getUrlPanel() === 'teams') {
+    clearPanelFromUrl();
+  }
+});
+
+// ── Router init: popstate restores SPA state from URL ─────────
+function _closeAllPanels() {
+  planningPanelOpenSignal.value = false;
+  agentsPanelOpenSignal.value = false;
+  teamsPanelOpenSignal.value = false;
+  // Settings panel is DOM-based — close directly
+  const sp = document.getElementById('settings-panel');
+  if (sp) {
+    sp.classList.add('hidden');
+    sp.classList.remove('flex');
+  }
+}
+
+function _openPanel(panel) {
+  switch (panel) {
+    case 'planning':
+      planningPanelOpenSignal.value = true;
+      break;
+    case 'agents':
+      agentsPanelOpenSignal.value = true;
+      break;
+    case 'teams':
+      teamsPanelOpenSignal.value = true;
+      break;
+    case 'settings':
+      document.dispatchEvent(new CustomEvent('open-settings-panel'));
+      break;
+  }
+}
+
+initRouter({
+  openPanel: _openPanel,
+  closeAll: _closeAllPanels,
+  loadRepo: (repo) => {
+    const input = $('repo-input');
+    if (input) input.value = repo;
+    // Skip the API call if this repo is already loaded — back/forward between
+    // panels should not trigger a full GitHub reload.
+    if (repo !== state.repoFullName) loadIssues(repo);
+  },
+  showEmpty: clearBoard,
 });
 
 // ── Service health checks ─────────────────────────────────────

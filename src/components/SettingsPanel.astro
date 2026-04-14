@@ -349,6 +349,7 @@
   import { getCodeEditor, setCodeEditor, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getAgentMaxIterations, setAgentMaxIterations } from '../lib/agents.js';
   import { clearHistory } from '../lib/implementer.js';
   import { clearCardLanes } from '../lib/board.js';
+  import { pushPanel, clearPanelFromUrl, getUrlPanel, isRestoring } from '../scripts/router.js';
 
   const AI_PROVIDERS = [
     { id: 'claude', label: 'Claude', icon: 'auto_awesome' },
@@ -505,11 +506,13 @@
 
   // ── Open/close ────────────────────────────────────────────────
   document.getElementById('settings-panel-close')?.addEventListener('click', () => {
+    if (getUrlPanel() === 'settings') clearPanelFromUrl();
     panel?.classList.add('hidden');
     panel?.classList.remove('flex');
   });
 
   document.addEventListener('open-settings-panel', () => {
+    if (!isRestoring()) pushPanel('settings');
     renderEditorGrid();
     initAiSection();
     initGithubSection();

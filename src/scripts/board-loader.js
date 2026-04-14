@@ -6,6 +6,7 @@ import { escHtml } from '../lib/formatters.js';
 import { state } from './state.js';
 import { getLocalIssues, promoteLocalIssue } from '../lib/local-issues.js';
 import { assignColumn } from '../lib/column-mapper.js';
+import { replaceRepo, isRestoring } from './router.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -169,6 +170,32 @@ document.addEventListener('focusout', (e) => {
     widget.style.boxShadow = '';
   }
 });
+
+// ── Clear board (used by router on back-to-empty navigation) ─
+export function clearBoard() {
+  state.repoFullName = '';
+  state.allIssues = [];
+  state.columns = {};
+  showState('empty');
+  const boardRepo = $('board-repo');
+  if (boardRepo) boardRepo.textContent = '';
+  statsBar.classList.add('hidden');
+  statsBar.classList.remove('flex');
+  const newIssueBtn = $('new-issue-btn');
+  if (newIssueBtn) {
+    newIssueBtn.classList.add('hidden');
+    newIssueBtn.classList.remove('flex');
+  }
+  const refreshBtn = $('refresh-issues-btn');
+  if (refreshBtn) {
+    refreshBtn.classList.add('hidden');
+    refreshBtn.classList.remove('flex');
+  }
+  repoSwitcherSelect.classList.add('hidden');
+  repoSwitcherSep.classList.add('hidden');
+  const selectedWrap = $('repo-selected-wrap');
+  if (selectedWrap) selectedWrap.classList.add('hidden');
+}
 
 // ── UI state ─────────────────────────────────────────────────
 export function showState(s) {
@@ -431,6 +458,8 @@ export async function loadIssues(repoArg) {
     statsBar.classList.remove('hidden');
     statsBar.classList.add('flex');
     localStorage.setItem('last_repo', repo);
+    // Keep URL in sync with the active repo (replaceState — no new history entry)
+    if (!isRestoring()) replaceRepo(repo);
     // Persist repo to SQLite (fire-and-forget)
     fetch(`${AGENT_BASE_URL}/repos`, {
       method: 'POST',

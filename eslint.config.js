@@ -21,6 +21,7 @@ const browserGlobals = {
   navigator: 'readonly',
   URL: 'readonly',
   URLSearchParams: 'readonly',
+  history: 'readonly',
   EventSource: 'readonly',
   MutationObserver: 'readonly',
   CustomEvent: 'readonly',
