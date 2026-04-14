@@ -28,6 +28,9 @@ const browserGlobals = {
   crypto: 'readonly',
   // CDN-loaded library (loaded via <script> tag in index.astro)
   lucide: 'readonly',
+  // Browser history & location globals
+  history: 'readonly',
+  location: 'readonly',
 };
 
 export default [

@@ -1064,7 +1064,10 @@ Generate 2–6 issues.`;
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
-            onClick={() => { planningPanelOpenSignal.value = false; }}
+            onClick={() => {
+              planningPanelOpenSignal.value = false;
+              if (history.state?.view === 'planning') history.back();
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',

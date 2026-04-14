@@ -171,14 +171,4 @@
   </div>
 </aside>
 
-<script>
-  const settingsBtn = document.getElementById('settings-btn');
-  settingsBtn?.addEventListener('click', () => {
-    document.dispatchEvent(new CustomEvent('open-settings-panel'));
-  });
 
-  const planningBtn = document.getElementById('planning-btn');
-  planningBtn?.addEventListener('click', () => {
-    document.dispatchEvent(new CustomEvent('open-planning-panel'));
-  });
-</script>

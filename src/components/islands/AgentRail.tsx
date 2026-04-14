@@ -118,6 +118,7 @@ export default function AgentRail() {
         <button
           onClick={() => {
             railOpenSignal.value = false;
+            if (history.state?.view === 'rail') history.back();
           }}
           class="text-on-surface-variant hover:text-on-surface transition-colors p-1 rounded"
         >

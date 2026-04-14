@@ -5,13 +5,8 @@ import { state } from './state.js';
 import { initBoardLoader, showState, loadIssues, getFilters } from './board-loader.js';
 import { initTokenRepo } from './token-repo.js';
 import { triggerImplement } from './run-dispatcher.js';
-import {
-  railOpenSignal,
-  agentsPanelOpenSignal,
-  teamsPanelOpenSignal,
-  planningPanelOpenSignal,
-  openDrawer,
-} from '../lib/signals.js';
+import { openDrawer } from '../lib/signals.js';
+import { navigate, initRouter } from './router.js';
 import { bus, Events } from '../lib/event-bus.js';
 import { initFavicon } from '../lib/favicon.js';
 
@@ -34,19 +29,21 @@ onRunUpdate(() => {
   bus.emit(Events.RUN_UPDATE);
 });
 
-// ── Signal-based panel toggles (Preact islands) ───────────────
-$('agent-rail-btn')?.addEventListener('click', () => {
-  railOpenSignal.value = !railOpenSignal.value;
-});
-$('agents-btn')?.addEventListener('click', () => {
-  agentsPanelOpenSignal.value = !agentsPanelOpenSignal.value;
-});
-$('teams-btn')?.addEventListener('click', () => {
-  teamsPanelOpenSignal.value = !teamsPanelOpenSignal.value;
-});
-$('planning-btn')?.addEventListener('click', () => {
-  planningPanelOpenSignal.value = !planningPanelOpenSignal.value;
-});
+// ── Panel navigation (via router for back/forward support) ────
+function _navToggle(view) {
+  if (history.state?.view === view) {
+    // Already on this view → go back (closes the panel)
+    history.back();
+  } else {
+    navigate(view);
+  }
+}
+
+$('settings-btn')?.addEventListener('click', () => _navToggle('settings'));
+$('agent-rail-btn')?.addEventListener('click', () => _navToggle('rail'));
+$('agents-btn')?.addEventListener('click', () => _navToggle('agents'));
+$('teams-btn')?.addEventListener('click', () => _navToggle('teams'));
+$('planning-btn')?.addEventListener('click', () => _navToggle('planning'));
 
 // ── Service health checks ─────────────────────────────────────
 
@@ -89,6 +86,7 @@ setInterval(checkServices, 30_000);
 initFavicon();
 
 // ── Init ─────────────────────────────────────────────────────
+initRouter();
 showState('empty');
 const lastRepo = localStorage.getItem('last_repo');
 if (lastRepo) {

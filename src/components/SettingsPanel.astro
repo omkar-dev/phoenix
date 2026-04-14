@@ -505,8 +505,12 @@
 
   // ── Open/close ────────────────────────────────────────────────
   document.getElementById('settings-panel-close')?.addEventListener('click', () => {
-    panel?.classList.add('hidden');
-    panel?.classList.remove('flex');
+    if (history.state?.view === 'settings') {
+      history.back();
+    } else {
+      panel?.classList.add('hidden');
+      panel?.classList.remove('flex');
+    }
   });
 
   document.addEventListener('open-settings-panel', () => {

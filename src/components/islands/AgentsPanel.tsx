@@ -170,7 +170,10 @@ export default function AgentsPanel() {
       <header class="flex items-center justify-between px-6 flex-shrink-0"
               style="background:#fff;border-bottom:1px solid rgba(195,198,214,0.2);height:52px">
         <div class="flex items-center gap-3">
-          <button onClick={() => { agentsPanelOpenSignal.value = false; }}
+          <button onClick={() => {
+                    agentsPanelOpenSignal.value = false;
+                    if (history.state?.view === 'agents') history.back();
+                  }}
                   class="flex items-center gap-1.5 text-[13px] font-medium transition-colors"
                   style="color:#6b7280">
             <span class="material-symbols-outlined" style="font-size:15px">arrow_back</span>

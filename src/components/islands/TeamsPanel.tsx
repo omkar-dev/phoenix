@@ -1347,7 +1347,10 @@ export default function TeamsPanel() {
         display:flex;align-items:stretch;
       "
       onClick={(e) => {
-        if (e.target === e.currentTarget) teamsPanelOpenSignal.value = false;
+        if (e.target === e.currentTarget) {
+          teamsPanelOpenSignal.value = false;
+          if (history.state?.view === 'teams') history.back();
+        }
       }}
     >
       <div
@@ -1377,7 +1380,10 @@ export default function TeamsPanel() {
             onDeleteTeam={handleDeleteTeam}
             onDeployTeam={handleDeployTeam}
             onNewTeam={handleNewTeam}
-            onClose={() => { teamsPanelOpenSignal.value = false; }}
+            onClose={() => {
+              teamsPanelOpenSignal.value = false;
+              if (history.state?.view === 'teams') history.back();
+            }}
             onCloseTest={handleCloseTest}
           />
         )}
