@@ -232,7 +232,14 @@ function buildCard(issue, colId) {
     </div>` : ''}
     <div class="flex items-start justify-between gap-2 mb-2">
       <div class="flex-1 min-w-0">
-        <span class="font-mono text-[10px] text-secondary uppercase tracking-wider">${issue._local ? 'draft' : `#${issue.number}`}</span>
+        ${issue._local
+          ? '<span class="font-mono text-[10px] text-secondary uppercase tracking-wider">draft</span>'
+          : run?.prUrl
+            ? `<a href="${escHtml(run.prUrl)}" target="_blank" rel="noopener"
+                class="font-mono text-[10px] uppercase tracking-wider font-semibold hover:underline"
+                style="color:#2563eb" onclick="event.stopPropagation()">#${issue.number}</a>`
+            : `<span class="font-mono text-[10px] text-secondary uppercase tracking-wider">#${issue.number}</span>`
+        }
         <h3 class="text-xs font-semibold text-on-surface leading-snug line-clamp-2 mt-0.5">${escHtml(issue.title)}</h3>
       </div>
       <div class="flex items-center gap-1 shrink-0">
