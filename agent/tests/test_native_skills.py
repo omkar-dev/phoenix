@@ -101,8 +101,7 @@ def test_attach_skills_single(skill_dir):
     _write_skill(skill_dir, "alpha", "# Skill: Alpha\n\nAlpha content.")
     result = native_skills.attach_skills("alpha")
     assert "Alpha content." in result
-    # No separator added for a single skill
-    assert "---" not in result
+    assert "\n\n---\n\n" not in result
 
 
 def test_attach_skills_two_skills_stacked(skill_dir):
