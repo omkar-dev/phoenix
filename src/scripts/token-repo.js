@@ -21,8 +21,16 @@ export async function loadUserRepos() {
   try {
     state.repos = await fetchUserRepos();
     renderRepoList(state.repos);
-    // Only show the repo list if no repo is currently selected or loading
-    if (!state.repoFullName) showRepoPanel('repo-list-wrap');
+    if (state.repoFullName) {
+      // A repo is already selected — dismiss the spinner and show the selected chip.
+      showRepoPanel(null);
+      const nameEl = $('repo-selected-name');
+      if (nameEl && !nameEl.textContent) nameEl.textContent = state.repoFullName.replace('oolio-group/', '');
+      const wrapEl = $('repo-selected-wrap');
+      if (wrapEl) wrapEl.classList.remove('hidden');
+    } else {
+      showRepoPanel('repo-list-wrap');
+    }
     populateRepoSwitcher(state.repos);
   } catch (err) {
     $('repo-fetch-error-text').textContent = err.userMessage || 'Could not load repos.';
