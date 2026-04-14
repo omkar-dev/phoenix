@@ -17,6 +17,7 @@ dependencies = [
 [project.scripts]
 phoenix-agent    = "server:serve"
 phoenix-semantic = "semantic_server:serve_semantic"
+pnx              = "cli:main"
 
 [project.optional-dependencies]
 dev = [
