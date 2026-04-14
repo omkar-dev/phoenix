@@ -1,7 +1,7 @@
 import { COLUMNS, LABEL_MAP, COLUMN_STATUS_LABELS } from './constants.js';
 import { escHtml, timeAgo, detectPriority, priorityIcon } from './formatters.js';
 import { assignColumn } from './column-mapper.js';
-import { runStore, refine, cancelRun, pushRun } from './implementer.js';
+import { runStore, refine, cancelRun, pushRun, prUnresolvedStore, prConflictsStore } from './implementer.js';
 import { getLaneAction, getCodeEditor } from './agents.js';
 import { AGENT_BASE_URL as AGENT_BASE } from './config.js';
 import { createIssue, updateIssue, ensureRepoLabel, updateProjectItemStatus } from './github-api.js';
@@ -354,7 +354,7 @@ function buildCard(issue, colId) {
       e.stopPropagation();
       pushBtn.disabled = true;
       pushBtn.textContent = 'Pushing…';
-      await pushRun(issue.number);
+      await pushRun(issue.number, _state?.repoFullName ?? null);
     });
   }
 
@@ -525,16 +525,24 @@ function _renderRunBar(run, colId, issue) {
 
   // ── Done (implement) ──────────────────────────────────────────
   if (run.status === 'done') {
+    const hasConflicts = run.prUrl ? (prConflictsStore.get(issue.number) ?? false) : false;
+    const unresolvedCount = run.prUrl ? (prUnresolvedStore.get(issue.number) ?? 0) : 0;
+    const hasPRComments = !hasConflicts && unresolvedCount > 0;
+    const statusBg = hasConflicts ? '#fef2f2' : (hasPRComments ? '#fffbeb' : '#f0fdf4');
+    const statusColor = hasConflicts ? '#ba1a1a' : (hasPRComments ? '#b45309' : '#1a7a4a');
+    const statusIcon = hasConflicts ? 'merge' : (hasPRComments ? 'rate_review' : 'check_circle');
+    const statusFill = (hasConflicts || hasPRComments) ? '' : ";font-variation-settings:'FILL' 1";
+    const statusLabel = hasConflicts ? 'Merge Conflicts' : (hasPRComments ? `Address Comments (${unresolvedCount})` : (run.prUrl ? 'PR opened' : 'Done'));
     return `
       <div class="mt-2 pt-2" style="${sep}">
-        <div class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 mb-1.5" style="background:#f0fdf4">
-          <span class="material-symbols-outlined shrink-0" style="font-size:13px;color:#1a7a4a;font-variation-settings:'FILL' 1">check_circle</span>
-          <span class="text-[10px] font-semibold" style="color:#1a7a4a">${run.prUrl ? 'PR opened' : 'Done'}</span>
+        <div class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 mb-1.5" style="background:${statusBg}">
+          <span class="material-symbols-outlined shrink-0" style="font-size:13px;color:${statusColor}${statusFill}">${statusIcon}</span>
+          <span class="text-[10px] font-semibold" style="color:${statusColor}">${statusLabel}</span>
           ${
             run.worktreePath
               ? `<button data-open-editor="${escHtml(run.worktreePath)}"
             class="flex items-center gap-0.5 text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded"
-            style="color:#1a7a4a;border:1px solid #bbf7d0" onclick="event.stopPropagation()" title="Open worktree in editor">
+            style="color:${statusColor};border:1px solid ${hasConflicts ? '#fca5a5' : (hasPRComments ? '#fde68a' : '#bbf7d0')}" onclick="event.stopPropagation()" title="Open worktree in editor">
             <span class="material-symbols-outlined" style="font-size:12px">code</span>Open
           </button>`
               : ''
@@ -543,7 +551,7 @@ function _renderRunBar(run, colId, issue) {
             run.prUrl
               ? `<a href="${escHtml(run.prUrl)}" target="_blank" rel="noopener"
               class="ml-auto text-[10px] font-semibold hover:underline shrink-0"
-              style="color:#1a7a4a" onclick="event.stopPropagation()">View PR →</a>`
+              style="color:${statusColor}" onclick="event.stopPropagation()">View PR →</a>`
               : ''
           }
         </div>

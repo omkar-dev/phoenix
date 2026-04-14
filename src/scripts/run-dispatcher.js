@@ -179,12 +179,37 @@ export function triggerRefine(issue, userPrompt = '') {
 }
 
 /**
+ * Re-run implementation with an optional user prompt providing additional context.
+ * Used when a run is already done/needs_review and the user wants to iterate.
+ *
+ * @param {object} issue  GitHub issue object
+ * @param {string} [userPrompt]  Additional instructions for the agent
+ * @param {string|null} [overrideAgentId]
+ */
+export function triggerReimplement(issue, userPrompt = '', overrideAgentId = null) {
+  const agents = getAgents();
+  const issueRepo = state.issueSourceRepo || state.repoFullName;
+
+  let agent = null;
+  if (overrideAgentId) {
+    agent = agents.find((a) => a.id === overrideAgentId) ?? null;
+  }
+  if (!agent) {
+    agent =
+      agents.find((a) => a.actionType === 'implement') ??
+      agents.find((a) => a.id === 'implementer');
+  }
+
+  implement(issue, issueRepo, { ..._agentConfig(agent, null), ...(userPrompt ? { userPrompt } : {}) });
+}
+
+/**
  * Trigger an agent run to address unresolved PR review comments.
  *
  * @param {object} issue  GitHub issue/PR object (number, title, body, html_url, …)
  * @param {Array<{isResolved:boolean, comments:Array<{body:string, path:string|null, author:{login:string}|null}>}>} reviewThreads
  */
-export function triggerAddressPRComments(issue, reviewThreads) {
+export function triggerAddressPRComments(issue, reviewThreads, existingBranch = null) {
   const unresolved = reviewThreads.filter((t) => !t.isResolved);
   if (!unresolved.length) return;
 
@@ -210,6 +235,40 @@ export function triggerAddressPRComments(issue, reviewThreads) {
       '---',
       `Original PR: ${issue.html_url}`,
       ...(issue.body ? ['', 'Original PR description:', issue.body] : []),
+    ].join('\n'),
+  };
+
+  const issueRepo = state.issueSourceRepo || state.repoFullName;
+  const agents = getAgents();
+  const agent =
+    agents.find((a) => a.actionType === 'implement' && a.id !== 'refiner') ??
+    agents.find((a) => a.actionType === 'implement') ??
+    agents.find((a) => a.id === 'implementer');
+
+  implement(syntheticIssue, issueRepo, { ..._agentConfig(agent, null), existingBranch });
+}
+
+/**
+ * Trigger an agent run to resolve merge conflicts on a PR branch.
+ *
+ * @param {object} issue  GitHub issue/PR object
+ */
+export function triggerResolveConflicts(issue) {
+  const syntheticIssue = {
+    ...issue,
+    title: `Resolve merge conflicts on PR #${issue.number}`,
+    body: [
+      `Pull request #${issue.number} has merge conflicts that need to be resolved.`,
+      '',
+      'Please:',
+      '1. Fetch the latest base branch',
+      '2. Merge or rebase to incorporate upstream changes',
+      '3. Resolve all conflict markers in the affected files',
+      '4. Commit the resolution and push to the PR branch',
+      '',
+      '---',
+      `PR: ${issue.html_url}`,
+      ...(issue.body ? ['', 'PR description:', issue.body] : []),
     ].join('\n'),
   };
 

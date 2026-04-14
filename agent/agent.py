@@ -167,13 +167,21 @@ class ImplementerAgent:
             if self.request.autonomy == "autonomous":
                 # Push the branch (fast: local → remote, no API wait).
                 await self._push_branch(result)
-                # PR creation is slow (GitHub API). Fire it in the background so
-                # the SSE stream closes immediately — the frontend polls for pr_url.
-                asyncio.create_task(self._create_pr_background(result))
-                await self.emit("complete", {
-                    "branch": result.branch_name,
-                    "pr_pending": True,
-                })
+                if self.request.existing_branch:
+                    # Updating an existing PR — just push; GitHub updates it automatically.
+                    asyncio.create_task(self._cleanup_worktree())
+                    await self.emit("complete", {
+                        "branch": result.branch_name,
+                        "pr_pending": False,
+                    })
+                else:
+                    # PR creation is slow (GitHub API). Fire it in the background so
+                    # the SSE stream closes immediately — the frontend polls for pr_url.
+                    asyncio.create_task(self._create_pr_background(result))
+                    await self.emit("complete", {
+                        "branch": result.branch_name,
+                        "pr_pending": True,
+                    })
             else:
                 # assist / semi-autonomous: hand off to the user for review before pushing.
                 await self.emit("needs_review", {
@@ -260,33 +268,60 @@ class ImplementerAgent:
                 )
                 await proc.communicate()
 
-            # Create an isolated worktree on a new branch.
-            # The worktree directory must not exist yet — git creates it.
-            base_worktree_branch = f"pnx/{self.run_id[:8]}"
+            # Create an isolated worktree. When existing_branch is supplied we check
+            # it out directly (address-PR-comments flow); otherwise we branch off base_branch.
             worktree_path = Path(tempfile.gettempdir()) / f"pnx-{self.run_id[:8]}"
-
-            # Prune stale worktree refs and remove any leftover branch with the same name
-            # so that a crashed previous run doesn't block this one.
             await self._git("worktree", "prune", cwd=base_dir)
-            await self._git("branch", "-D", base_worktree_branch, cwd=base_dir)
 
-            worktree_branch = base_worktree_branch
-            for _attempt in range(1, 100):
+            if self.request.existing_branch:
+                existing = self.request.existing_branch
+                # Fetch the existing PR branch so it's available locally.
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "worktree", "add", "-b", worktree_branch,
-                    str(worktree_path), f"origin/{self.request.base_branch}",
+                    "git", "fetch", "--depth", "1", "origin", existing,
                     cwd=base_dir,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
                 )
                 _, stderr = await proc.communicate()
-                if proc.returncode == 0:
-                    break
-                err_msg = stderr.decode().strip()
-                if "already exists" in err_msg and _attempt < 99:
-                    worktree_branch = f"{base_worktree_branch}-{_attempt + 1}"
-                    continue
-                raise RuntimeError(f"git worktree add failed: {err_msg}")
+                if proc.returncode != 0:
+                    raise RuntimeError(f"git fetch {existing} failed: {stderr.decode().strip()}")
+
+                # Remove any stale local branch so worktree add can create it cleanly.
+                await self._git("branch", "-D", existing, cwd=base_dir)
+
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "worktree", "add", "-b", existing,
+                    str(worktree_path), f"origin/{existing}",
+                    cwd=base_dir,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    raise RuntimeError(f"git worktree add failed: {stderr.decode().strip()}")
+                worktree_branch = existing
+            else:
+                base_worktree_branch = f"pnx/{self.run_id[:8]}"
+                # Remove any leftover branch from a crashed previous run.
+                await self._git("branch", "-D", base_worktree_branch, cwd=base_dir)
+
+                worktree_branch = base_worktree_branch
+                for _attempt in range(1, 100):
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "worktree", "add", "-b", worktree_branch,
+                        str(worktree_path), f"origin/{self.request.base_branch}",
+                        cwd=base_dir,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, stderr = await proc.communicate()
+                    if proc.returncode == 0:
+                        break
+                    err_msg = stderr.decode().strip()
+                    if "already exists" in err_msg and _attempt < 99:
+                        worktree_branch = f"{base_worktree_branch}-{_attempt + 1}"
+                        continue
+                    raise RuntimeError(f"git worktree add failed: {err_msg}")
 
         self.work_dir = worktree_path
         self._base_dir = base_dir
@@ -433,7 +468,7 @@ class ImplementerAgent:
             llm=llm,
             tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
         )
-        max_iterations = self.request.max_iterations or 50
+        max_iterations = self.request.max_iterations or 100
         self._conversation = Conversation(
             agent=agent,
             workspace=str(self.work_dir),
@@ -571,10 +606,15 @@ class ImplementerAgent:
             if self._file_snippets else ""
         )
 
+        comments_section = (
+            f"\nADDITIONAL INSTRUCTIONS FROM USER:\n{spec.additional_comments}\n"
+            if spec.additional_comments else ""
+        )
+
         parts.append(
             f"Implement the following feature. Be thorough and precise.\n\n"
             f"INTENT: {spec.intent}\n\n"
-            f"ACCEPTANCE CRITERIA:\n{criteria}{tech}{ctx}{tree_section}{snippets_section}\n\n"
+            f"ACCEPTANCE CRITERIA:\n{criteria}{tech}{ctx}{comments_section}{tree_section}{snippets_section}\n\n"
             f"REASONING PROTOCOL — complete each step before moving to the next:\n\n"
             f"STEP 1 · OBSERVE\n"
             f"Using the file tree and pre-loaded snippets, list every file relevant to the\n"
@@ -745,7 +785,13 @@ class ImplementerAgent:
     async def _push_branch(self, result: AgentResult) -> None:
         """Push branch to remote origin (fast — no GitHub API)."""
         await self.emit("progress", {"step": "push", "message": "Pushing branch…"})
+        # Use --force-with-lease when the branch already exists remotely (e.g. after a redo),
+        # so a non-fast-forward push succeeds without clobbering concurrent remote work.
         code, err = await self._git("push", "-u", "origin", result.branch_name)
+        if code != 0 and "non-fast-forward" in err:
+            # Branch already exists on remote from a previous run — force-push since
+            # implementer/* branches are exclusively agent-owned.
+            code, err = await self._git("push", "--force", "-u", "origin", result.branch_name)
         if code != 0:
             raise RuntimeError(f"git push: {err}")
 

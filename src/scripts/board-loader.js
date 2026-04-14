@@ -1,5 +1,6 @@
-import { fetchAllIssues, createIssue, fetchProjectStatuses, fetchRepoInfo, fetchRepoLabels } from '../lib/github-api.js';
+import { fetchAllIssues, createIssue, fetchProjectStatuses, fetchRepoInfo, fetchRepoLabels, fetchPRReviewThreads, fetchPRMergeable } from '../lib/github-api.js';
 import { buildColumns, renderBoard, clearCardLaneOverride, isRecentlyMoved } from '../lib/board.js';
+import { runStore, setPrUnresolved, setPrConflicts } from '../lib/implementer.js';
 import { loadTriageDuplicates } from '../lib/semantic.js';
 import { AGENT_BASE_URL } from '../lib/config.js';
 import { escHtml } from '../lib/formatters.js';
@@ -8,6 +9,23 @@ import { getLocalIssues, promoteLocalIssue } from '../lib/local-issues.js';
 import { assignColumn } from '../lib/column-mapper.js';
 
 const $ = (id) => document.getElementById(id);
+
+async function _fetchPrUnresolvedCounts(repo) {
+  const prs = [...runStore.entries()].filter(([, run]) => run.prUrl);
+  if (!prs.length) return;
+  await Promise.all(
+    prs.map(async ([issueNumber]) => {
+      const [{ threads }, hasConflicts] = await Promise.all([
+        fetchPRReviewThreads(repo, issueNumber),
+        fetchPRMergeable(repo, issueNumber),
+      ]);
+      const unresolved = threads.filter((t) => !t.isResolved).length;
+      setPrUnresolved(issueNumber, unresolved);
+      setPrConflicts(issueNumber, hasConflicts ?? false);
+    })
+  );
+  renderBoard(getFilters);
+}
 
 const repoSwitcherSelect = $('repo-switcher-select');
 const repoSwitcherSep = $('repo-switcher-sep');
@@ -404,6 +422,9 @@ export async function loadIssues(repoArg) {
     populateFilters();
     renderBoard(getFilters);
     showState('board');
+
+    // Fetch unresolved PR review thread counts in the background for any issues with a PR
+    _fetchPrUnresolvedCounts(issueRepo);
 
     // Fetch GitHub Projects v2 status in the background and re-render if found
     fetchProjectStatuses(repo).then((projectData) => {

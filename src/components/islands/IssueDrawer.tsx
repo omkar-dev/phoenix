@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { drawerSignal, closeDrawer, setDrawerTab, runsSignal, logsSignal, suggestionsSignal, dismissSuggestion } from '../../lib/signals.js';
-import { triggerImplement, triggerAddressPRComments, cancelRun, pushRun } from '../../scripts/run-dispatcher.js';
-import { updateIssue, fetchIssueComments, createIssueComment, fetchOrgMembers, fetchRepoLabels, createRepoLabel, fetchPRReviewThreads } from '../../lib/github-api.js';
+import { triggerImplement, triggerAddressPRComments, triggerResolveConflicts, triggerReimplement, cancelRun, pushRun } from '../../scripts/run-dispatcher.js';
+import { setPrUnresolved, setPrConflicts } from '../../lib/implementer.js';
+import { updateIssue, fetchIssueComments, createIssueComment, fetchOrgMembers, fetchRepoLabels, createRepoLabel, fetchPRReviewThreads, fetchPRMergeable } from '../../lib/github-api.js';
 import { getAgents, getTeams, getCodeEditor, getIssueTeam, setIssueTeam } from '../../lib/agents.js';
 import { AGENT_BASE_URL } from '../../lib/config.js';
 import { state } from '../../scripts/state.js';
@@ -202,7 +203,7 @@ function AIStatusRow({ run, issueNumber }: { run: Run | undefined; issueNumber: 
   }
 
   async function handlePush(issueNumber: number) {
-    await pushRun(issueNumber);
+    await pushRun(issueNumber, (state.issueSourceRepo || state.repoFullName || null) as any);
   }
 
   return (
@@ -1349,38 +1350,63 @@ function AITab({ issue }: { issue: Issue }) {
   );
 
   const [refinePrompt, setRefinePrompt] = useState('');
+  const [reimplPrompt, setReimplPrompt] = useState('');
   const [pushLoading, setPushLoading] = useState(false);
 
   // PR review threads — loaded when the drawer opens for a pull request
   const [reviewThreads, setReviewThreads] = useState<PRReviewThread[] | null>(null);
+  const [prHeadBranch, setPrHeadBranch] = useState<string | null>(null);
   const [threadsLoading, setThreadsLoading] = useState(false);
-  const [addressingPR, setAddressingPR] = useState(false);
+
+  // Merge conflict state
+  const [hasConflicts, setHasConflicts] = useState(false);
+  const [resolvingConflicts, setResolvingConflicts] = useState(false);
 
   const repo = (state.issueSourceRepo || state.repoFullName) as string | null;
   const isPR = isPullRequest(issue);
 
+  // If the issue itself isn't a PR but the agent opened one, use that PR number instead
+  const prUrlMatch = !isPR && run?.prUrl ? run.prUrl.match(/\/pull\/(\d+)$/) : null;
+  const prNumber = isPR ? issue.number : prUrlMatch ? parseInt(prUrlMatch[1], 10) : null;
+  const hasPR = prNumber !== null;
+
   useEffect(() => {
-    if (!isPR || !repo || (issue as any)._local) return;
+    if (!hasPR || !repo || (issue as any)._local) return;
     setThreadsLoading(true);
-    fetchPRReviewThreads(repo, issue.number)
-      .then((threads: PRReviewThread[]) => setReviewThreads(threads))
-      .finally(() => setThreadsLoading(false));
-  }, [isPR, repo, issue.number]);
+    Promise.all([
+      fetchPRReviewThreads(repo, prNumber!) as unknown as Promise<{ threads: PRReviewThread[]; headRefName: string | null }>,
+      fetchPRMergeable(repo, prNumber!),
+    ]).then(([{ threads, headRefName }, conflicts]) => {
+      setReviewThreads(threads);
+      setPrHeadBranch(headRefName);
+      const unresolved = threads.filter((t) => !t.isResolved).length;
+      setPrUnresolved(issue.number, unresolved);
+      const conflicted = conflicts ?? false;
+      setHasConflicts(conflicted);
+      setPrConflicts(issue.number, conflicted);
+      renderBoard(getFilters);
+    }).finally(() => setThreadsLoading(false));
+  }, [hasPR, prNumber, repo, issue.number]);
 
   const unresolvedThreads = (reviewThreads ?? []).filter((t) => !t.isResolved);
 
+  function handleResolveConflicts() {
+    setResolvingConflicts(true);
+    triggerResolveConflicts(issue);
+    setDrawerTab('logs');
+    setResolvingConflicts(false);
+  }
+
   async function handlePush() {
     setPushLoading(true);
-    await pushRun(issue.number);
+    await pushRun(issue.number, (state.issueSourceRepo || state.repoFullName || null) as any);
     setPushLoading(false);
   }
 
   function handleAddressPRComments() {
     if (!reviewThreads) return;
-    setAddressingPR(true);
-    triggerAddressPRComments(issue, reviewThreads);
+    triggerAddressPRComments(issue, reviewThreads, prHeadBranch);
     setDrawerTab('logs');
-    setAddressingPR(false);
   }
 
   const isIdleOrFailed = status === 'idle' || status === 'failed';
@@ -1408,8 +1434,8 @@ function AITab({ issue }: { issue: Issue }) {
         <p class="text-sm font-semibold text-on-surface leading-snug">{issue.title}</p>
       </div>
 
-      {/* Address PR Comments — visible only when this item is a PR with unresolved review threads */}
-      {isPR && (threadsLoading || unresolvedThreads.length > 0) && (
+      {/* Address PR Comments — visible when this issue has an associated PR with unresolved review threads */}
+      {hasPR && (threadsLoading || unresolvedThreads.length > 0) && (
         <div class="rounded-xl p-4 space-y-3" style="background:#edeef0">
           <div class="flex items-center gap-2">
             <span class="material-symbols-outlined" style="font-size:16px;color:#0e7490">rate_review</span>
@@ -1452,18 +1478,48 @@ function AITab({ issue }: { issue: Issue }) {
                 })}
               </div>
               <button
-                disabled={addressingPR || status === 'running'}
+                disabled={status === 'pending' || status === 'running'}
                 onClick={handleAddressPRComments}
                 class="flex items-center justify-center gap-1.5 w-full text-on-primary text-xs font-semibold py-2 rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 style="background:linear-gradient(135deg,#0e7490,#0891b2)"
               >
                 <span class="material-symbols-outlined" style="font-size:14px">
-                  {addressingPR ? 'autorenew' : 'rate_review'}
+                  {(status === 'pending' || status === 'running') ? 'autorenew' : 'rate_review'}
                 </span>
-                {addressingPR ? 'Starting…' : 'Address PR Comments'}
+                {(status === 'pending' || status === 'running') ? 'Starting…' : 'Address PR Comments'}
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* Resolve Conflicts — visible only when this issue's PR has merge conflicts */}
+      {hasPR && hasConflicts && (
+        <div class="rounded-xl p-4 space-y-3" style="background:#edeef0">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#ba1a1a">merge</span>
+            <p class="text-xs font-bold text-on-surface">Merge Conflicts</p>
+            <span
+              class="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+              style="background:#fde8e8;color:#ba1a1a"
+            >
+              conflicts
+            </span>
+          </div>
+          <p class="text-[11px] text-on-surface-variant leading-relaxed">
+            The agent will fetch the latest base branch, resolve all conflict markers, and push the fixes.
+          </p>
+          <button
+            disabled={resolvingConflicts || status === 'running'}
+            onClick={handleResolveConflicts}
+            class="flex items-center justify-center gap-1.5 w-full text-on-primary text-xs font-semibold py-2 rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            style="background:linear-gradient(135deg,#ba1a1a,#dc2626)"
+          >
+            <span class="material-symbols-outlined" style="font-size:14px">
+              {resolvingConflicts ? 'autorenew' : 'merge'}
+            </span>
+            {resolvingConflicts ? 'Starting…' : 'Resolve Conflicts'}
+          </button>
         </div>
       )}
 
@@ -1579,6 +1635,34 @@ function AITab({ issue }: { issue: Issue }) {
             <span class="material-symbols-outlined" style="font-size:14px">play_arrow</span>
             {status === 'failed' ? 'Retry' : 'Start Implementation'}
           </button>
+        )}
+
+        {(status === 'done' || status === 'needs_review' || status === 'cancelled') && (
+          <div class="pt-2 space-y-2 border-t" style="border-color:#c3c6d6">
+            <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+              Re-implement
+            </p>
+            <textarea
+              value={reimplPrompt}
+              onInput={(e) => setReimplPrompt((e.target as HTMLTextAreaElement).value)}
+              placeholder="Describe what to change or add (optional)…"
+              rows={3}
+              class="w-full text-[11px] text-on-surface bg-white rounded-lg px-3 py-2 resize-none outline-none leading-relaxed"
+              style="border:1px solid #c3c6d6"
+            />
+            <button
+              onClick={() => {
+                triggerReimplement(issue, reimplPrompt.trim(), selectedAgentId || null);
+                setReimplPrompt('');
+                setDrawerTab('logs');
+              }}
+              class="flex items-center justify-center gap-1.5 w-full text-on-primary text-xs font-semibold py-2 rounded-lg transition-all active:scale-95"
+              style="background:linear-gradient(135deg,#003d9b,#0052cc)"
+            >
+              <span class="material-symbols-outlined" style="font-size:14px">replay</span>
+              Re-implement
+            </button>
+          </div>
         )}
       </div>
 
@@ -1815,7 +1899,7 @@ function LogsTab({ issue }: { issue: Issue }) {
 
   async function handlePush() {
     setPushLoading(true);
-    await pushRun(issue.number);
+    await pushRun(issue.number, (state.issueSourceRepo || state.repoFullName || null) as any);
     setPushLoading(false);
   }
 

@@ -824,7 +824,7 @@ function _renderAI(issue) {
     pushBtn.addEventListener('click', async () => {
       pushBtn.disabled = true;
       pushBtn.textContent = 'Pushing…';
-      await pushRun(issue.number);
+      await pushRun(issue.number, state.issueSourceRepo || state.repoFullName || null);
     });
   }
 }
@@ -1089,7 +1089,7 @@ function _renderLogs(issue) {
     logsPushBtn.addEventListener('click', async () => {
       logsPushBtn.disabled = true;
       logsPushBtn.textContent = 'Pushing…';
-      await pushRun(issue.number);
+      await pushRun(issue.number, state.issueSourceRepo || state.repoFullName || null);
     });
   }
 

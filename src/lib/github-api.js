@@ -422,13 +422,14 @@ export async function ensureRepoLabel(repo, { name, color }) {
  */
 export async function fetchPRReviewThreads(repo, prNumber) {
   const token = localStorage.getItem('gh_token');
-  if (!token) return [];
+  if (!token) return { threads: [], headRefName: null };
 
   const [owner, name] = repo.split('/');
   const query = `
     query($owner: String!, $name: String!, $number: Int!) {
       repository(owner: $owner, name: $name) {
         pullRequest(number: $number) {
+          headRefName
           reviewThreads(first: 100) {
             nodes {
               isResolved
@@ -447,17 +448,41 @@ export async function fetchPRReviewThreads(repo, prNumber) {
   `;
   try {
     const data = await graphqlRequest(query, { owner, name, number: prNumber });
-    const nodes = data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-    return nodes.map((t) => ({
-      isResolved: t.isResolved ?? false,
-      comments: (t.comments?.nodes ?? []).map((c) => ({
-        body: c.body ?? '',
-        path: c.path ?? null,
-        author: c.author ?? null,
+    const pr = data?.repository?.pullRequest;
+    const nodes = pr?.reviewThreads?.nodes ?? [];
+    return {
+      headRefName: pr?.headRefName ?? null,
+      threads: nodes.map((t) => ({
+        isResolved: t.isResolved ?? false,
+        comments: (t.comments?.nodes ?? []).map((c) => ({
+          body: c.body ?? '',
+          path: c.path ?? null,
+          author: c.author ?? null,
+        })),
       })),
-    }));
+    };
   } catch {
-    return [];
+    return { threads: [], headRefName: null };
+  }
+}
+
+/**
+ * Check whether a PR has merge conflicts.
+ * Returns true if mergeable === false, false if clean, null if GitHub hasn't computed it yet.
+ */
+export async function fetchPRMergeable(repo, prNumber) {
+  const token = localStorage.getItem('gh_token');
+  if (!token) return null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/pulls/${prNumber}`, {
+      headers: buildHeaders(token),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // mergeable: true = clean, false = conflicts, null = not yet computed
+    return data.mergeable === false;
+  } catch {
+    return null;
   }
 }
 

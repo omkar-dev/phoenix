@@ -7,6 +7,7 @@ class IssueSpec(BaseModel):
     acceptance_criteria: list[str]
     technical_notes: str | None = None
     context_files: list[str] = Field(default_factory=list)
+    additional_comments: Optional[str] = None  # extra context provided during reimplementation
 
 
 class McpServer(BaseModel):
@@ -30,14 +31,15 @@ class RunRequest(BaseModel):
     llm_base_url: str | None = None         # e.g. https://api.anthropic.com
     fallback_llm_model: str | None = None   # used if primary model fails
     # Agent personality & behaviour
-    system_prompt: str | None = None         # prepended to every task prompt
-    purpose: str | None = None               # one-line agent role description
-    reasoning_pattern: str | None = None     # e.g. "observe-plan-act"
-    guardrails_always: str | None = None     # things the agent must always do
-    guardrails_never: str | None = None      # things the agent must never do
-    sampling: str | None = None              # deterministic | balanced | creative
-    autonomy: str | None = None              # assist | semi-autonomous | autonomous
-    max_iterations: int | None = Field(None, ge=1, description="Max agent iterations per run")
+    system_prompt: Optional[str] = None         # prepended to every task prompt
+    purpose: Optional[str] = None               # one-line agent role description
+    reasoning_pattern: Optional[str] = None     # e.g. "observe-plan-act"
+    guardrails_always: Optional[str] = None     # things the agent must always do
+    guardrails_never: Optional[str] = None      # things the agent must never do
+    sampling: Optional[str] = None              # deterministic | balanced | creative
+    autonomy: Optional[str] = None              # assist | semi-autonomous | autonomous
+    max_iterations: Optional[int] = Field(None, ge=1, description="Max agent iterations per run")
+    existing_branch: Optional[str] = None       # when set, check out this branch and push to it (no new PR)
 
 
 class RunEvent(BaseModel):
@@ -78,3 +80,12 @@ class MovementBody(BaseModel):
     issue_number: int
     from_column: str
     to_column: str
+
+
+class PushDirectRequest(BaseModel):
+    worktree_path: str
+    branch_name: str
+    repo_full_name: str
+    issue_number: int
+    base_branch: str = "main"
+    create_draft_pr: bool = True

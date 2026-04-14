@@ -16,6 +16,24 @@ export const suggestionStore = new Map();
 /** @type {Set<number>} Issue numbers whose AI suggestion has been dismissed */
 export const dismissedSuggestions = new Set();
 
+/** @type {Map<number, number>} Maps issue number → unresolved PR review thread count */
+export const prUnresolvedStore = new Map();
+
+/** Update the unresolved PR thread count for an issue and notify listeners */
+export function setPrUnresolved(issueNumber, count) {
+  prUnresolvedStore.set(issueNumber, count);
+  _notify();
+}
+
+/** @type {Map<number, boolean>} Maps issue number → whether the PR has merge conflicts */
+export const prConflictsStore = new Map();
+
+/** Update the merge conflict state for an issue and notify listeners */
+export function setPrConflicts(issueNumber, hasConflicts) {
+  prConflictsStore.set(issueNumber, hasConflicts);
+  _notify();
+}
+
 const _listeners = new Set();
 
 // ── Persistence helpers ───────────────────────────────────────
@@ -205,7 +223,8 @@ function _log(n, entry) {
  * @param {{ endpoint?: string, mcpServers?: object[], autonomy?: string,
  *           llmModel?: string, llmApiKey?: string, fallbackLlmModel?: string,
  *           systemPrompt?: string, purpose?: string, reasoningPattern?: string,
- *           guardrailsAlways?: string, guardrailsNever?: string, sampling?: string }} [agentConfig]
+ *           guardrailsAlways?: string, guardrailsNever?: string, sampling?: string,
+ *           userPrompt?: string }} [agentConfig]
  */
 export async function implement(issue, repoFullName, agentConfig = {}) {
   const n = issue.number;
@@ -226,6 +245,7 @@ export async function implement(issue, repoFullName, agentConfig = {}) {
     model: _model,
     cost: null,
     _endpoint: endpoint,
+    repoFullName,
   });
 
   // Log team + agent context so the user knows what's running
@@ -248,7 +268,7 @@ export async function implement(issue, repoFullName, agentConfig = {}) {
       body: JSON.stringify({
         issue_number: n,
         repo_full_name: repoFullName,
-        spec: _buildSpec(issue),
+        spec: _buildSpec(issue, agentConfig.userPrompt),
         base_branch: 'main',
         create_draft_pr: agentConfig.createDraftPr ?? true,
         mcp_servers: agentConfig.mcpServers ?? [],
@@ -270,6 +290,7 @@ export async function implement(issue, repoFullName, agentConfig = {}) {
         ...(agentConfig.sampling ? { sampling: agentConfig.sampling } : {}),
         ...(agentConfig.autonomy ? { autonomy: agentConfig.autonomy } : {}),
         ...(agentConfig.maxIterations ? { max_iterations: agentConfig.maxIterations } : {}),
+        ...(agentConfig.existingBranch ? { existing_branch: agentConfig.existingBranch } : {}),
       }),
     });
     if (!res.ok) throw new Error(`Agent server ${res.status}`);
@@ -763,17 +784,42 @@ export async function refine(issue, agentConfig = {}) {
 
 // ── Push committed branch + open PR ──────────────────────────
 
-export async function pushRun(issueNumber) {
+export async function pushRun(issueNumber, repoFullName = null) {
   const run = runStore.get(issueNumber);
   if (!run?.runId) return;
   const runId = run.runId;
+  const repo = run.repoFullName ?? repoFullName;
 
   _set(issueNumber, { ...run, status: 'running', step: 'Pushing branch…' });
   _log(issueNumber, { type: 'progress', message: 'Pushing branch to GitHub…' });
 
   try {
-    const res = await fetch(`${AGENT_BASE}/runs/${runId}/push`, { method: 'POST' });
+    let res = await fetch(`${AGENT_BASE}/runs/${runId}/push`, { method: 'POST' });
+
+    // Server was restarted — run is gone from memory but worktree is still on disk.
+    // Fall back to /push-direct using the branch + worktree path stored locally.
+    if (res.status === 404 && run.branch && run.worktreePath && repo) {
+      res = await fetch(`${AGENT_BASE}/push-direct`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          worktree_path: run.worktreePath,
+          branch_name: run.branch,
+          repo_full_name: repo,
+          issue_number: issueNumber,
+        }),
+      });
+    }
+
     const data = await res.json();
+
+    // Worktree was cleaned up after server restart — code changes are gone, must re-run.
+    if (res.status === 410 && data.detail === 'worktree_gone') {
+      _set(issueNumber, { status: 'idle', step: '', prUrl: null });
+      _log(issueNumber, { type: 'error', message: 'Worktree was cleaned up — please re-run the implementation.' });
+      return;
+    }
+
     if (!res.ok) throw new Error(data.detail ?? `Server ${res.status}`);
     _set(issueNumber, {
       ...runStore.get(issueNumber),
@@ -826,13 +872,14 @@ export function logDelegation(issueNumber, fromAgentName, toAgentName) {
 
 // ── Helpers ───────────────────────────────────────────────────
 
-function _buildSpec(issue) {
+function _buildSpec(issue, userPrompt = null) {
   const body = issue.body ?? '';
   return {
     intent: issue.title,
     acceptance_criteria: _extractCriteria(body),
     technical_notes: body.slice(0, 2000) || null,
     context_files: [],
+    ...(userPrompt ? { additional_comments: userPrompt } : {}),
   };
 }
 
