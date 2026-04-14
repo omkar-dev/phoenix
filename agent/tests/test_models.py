@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from models import IssueSpec, RunRequest, MovementBody, RepoBody
+from models import IssueSpec, MovementBody, RepoBody, RunRequest
 
 
 def test_issue_spec_minimal():

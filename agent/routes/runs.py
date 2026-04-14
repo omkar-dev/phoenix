@@ -1,13 +1,13 @@
 import asyncio
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
-import db as _db
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+import db as _db
 from agent import ImplementerAgent
-from models import RunEvent, RunRequest
+from models import RunRequest
 from registry import RunState, _runs
 
 router = APIRouter()

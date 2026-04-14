@@ -1,10 +1,8 @@
 """Tests for the SQLite persistence layer."""
 
-import json
-import pytest
+
 import aiosqlite
-from pathlib import Path
-from unittest.mock import patch
+import pytest
 
 import db
 

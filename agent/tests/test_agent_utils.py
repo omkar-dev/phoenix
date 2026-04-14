@@ -1,13 +1,12 @@
 """Tests for ImplementerAgent utility methods (no I/O, no LLM)."""
 
 import os
-import pytest
 
 os.environ.setdefault("GITHUB_TOKEN", "test-token")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
-from models import IssueSpec, RunRequest
 from agent import ImplementerAgent
+from models import IssueSpec, RunRequest
 
 
 def _make_agent(intent="Add a feature", criteria=None, context_files=None):

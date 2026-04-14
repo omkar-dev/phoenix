@@ -1,9 +1,10 @@
 """Smoke tests for the FastAPI app — health endpoint and basic routing."""
 
 import os
+
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 # Provide required env vars before importing the app
 os.environ.setdefault("GITHUB_TOKEN", "test-token")

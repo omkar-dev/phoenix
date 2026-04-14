@@ -22,7 +22,6 @@ import os
 import re
 import time
 from collections import defaultdict
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -165,7 +164,7 @@ async def health() -> dict:
 async def similar_issues(
     repo: str = Query(..., description="owner/repo"),
     number: int = Query(..., description="Issue number"),
-    threshold: Optional[float] = Query(None, description="Override similarity threshold"),
+    threshold: float | None = Query(None, description="Override similarity threshold"),
 ) -> dict:
     if not repo or "/" not in repo:
         raise HTTPException(status_code=400, detail="repo must be 'owner/repo'")
@@ -188,6 +187,7 @@ async def similar_issues(
 def serve_semantic() -> None:
     """Entry point for `phoenix-semantic` / `uvx phoenix-agent` semantic mode."""
     import argparse
+
     import uvicorn
 
     parser = argparse.ArgumentParser(

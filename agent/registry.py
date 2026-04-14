@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from agent import ImplementerAgent
@@ -9,11 +9,11 @@ if TYPE_CHECKING:
 @dataclass
 class AgentResult:
     success: bool
-    branch_name: Optional[str] = None
-    pr_url: Optional[str] = None
+    branch_name: str | None = None
+    pr_url: str | None = None
     files_changed: list[str] = field(default_factory=list)
     summary: str = ""
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -21,7 +21,7 @@ class RunState:
     run_id: str
     agent: "ImplementerAgent"
     task: asyncio.Task
-    result: Optional[AgentResult] = None
+    result: AgentResult | None = None
 
 
 _runs: dict[str, RunState] = {}
