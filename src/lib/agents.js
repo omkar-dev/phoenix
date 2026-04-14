@@ -165,6 +165,39 @@ export function setCodeEditor(id) {
   localStorage.setItem('pnx_code_editor', id);
 }
 
+// ── Nix / custom scripts per repo ────────────────────────────
+
+const NIX_SCRIPTS_KEY = 'pnx_nix_scripts';
+
+function _getNixScriptsAll() {
+  try {
+    return JSON.parse(localStorage.getItem(NIX_SCRIPTS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/** @returns {{ id: string, label: string, command: string }[]} */
+export function getNixScripts(repoFullName) {
+  return _getNixScriptsAll()[repoFullName] ?? [];
+}
+
+export function saveNixScript(repoFullName, script) {
+  const all = _getNixScriptsAll();
+  if (!all[repoFullName]) all[repoFullName] = [];
+  const idx = all[repoFullName].findIndex((s) => s.id === script.id);
+  if (idx > -1) all[repoFullName][idx] = script;
+  else all[repoFullName].push({ ...script, id: script.id || nanoid() });
+  try { localStorage.setItem(NIX_SCRIPTS_KEY, JSON.stringify(all)); } catch {}
+}
+
+export function removeNixScript(repoFullName, id) {
+  const all = _getNixScriptsAll();
+  if (!all[repoFullName]) return;
+  all[repoFullName] = all[repoFullName].filter((s) => s.id !== id);
+  try { localStorage.setItem(NIX_SCRIPTS_KEY, JSON.stringify(all)); } catch {}
+}
+
 // ── Lane action resolver ──────────────────────────────────────
 
 /**

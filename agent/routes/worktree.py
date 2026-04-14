@@ -80,6 +80,24 @@ async def create_worktree(req: WorktreeRequest) -> dict:
                     continue
                 raise HTTPException(500, f"git worktree add failed: {err_msg}")
 
+    # Run any custom scripts (e.g. nix-shell, nix develop, cargo build) inside
+    # the worktree before opening the editor.  Scripts run sequentially; the
+    # first failure aborts the sequence and surfaces a clear error to the caller.
+    for idx, script in enumerate(req.custom_scripts, 1):
+        proc = await asyncio.create_subprocess_exec(
+            "sh", "-c", script,
+            cwd=worktree_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err_output = stderr.decode().strip() or "(no error output)"
+            raise HTTPException(
+                status_code=422,
+                detail=f"Script {idx} failed (exit {proc.returncode}): {err_output}",
+            )
+
     asyncio.create_task(
         asyncio.create_subprocess_exec(
             req.editor_cmd, str(worktree_path),

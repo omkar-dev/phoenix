@@ -51,6 +51,7 @@ class WorktreeRequest(BaseModel):
     repo_full_name: str
     base_branch: str = "main"
     editor_cmd: str = "code"
+    custom_scripts: list[str] = Field(default_factory=list)
 
 
 class OpenEditorRequest(BaseModel):
