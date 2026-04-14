@@ -609,7 +609,9 @@ async function _handleMove(num, fromCol, toCol) {
     const updated = await updateIssue(issueRepo, num, { assignees: [user.login] });
     const idx = _state.allIssues.findIndex((i) => i.number === num);
     if (idx !== -1) _state.allIssues[idx] = { ..._state.allIssues[idx], assignees: updated.assignees };
-  } catch {}
+  } catch (err) {
+    _showToast(`Couldn't auto-assign #${num}: ${err.userMessage || err.message}`);
+  }
 }
 
 export function moveCard(num, from, to, getFilters) {
