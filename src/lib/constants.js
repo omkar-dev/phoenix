@@ -51,6 +51,7 @@ export const CODE_EDITORS = [
   { id: 'cursor', name: 'Cursor', cmd: 'cursor', icon: 'arrow_outward' },
   { id: 'windsurf', name: 'Windsurf', cmd: 'windsurf', icon: 'wind_power' },
   { id: 'zed', name: 'Zed', cmd: 'zed', icon: 'bolt' },
+  { id: 'custom', name: 'Custom', cmd: '', icon: 'terminal' },
 ];
 
 // ── Token pricing (USD per 1 million tokens, input / output) ──
