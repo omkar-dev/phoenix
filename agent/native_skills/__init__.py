@@ -126,5 +126,7 @@ def attach_skills(*names: str) -> str:
             system_prompt=attach_skills("write_tests"),
         )
     """
+    if not names:
+        raise ValueError("attach_skills() requires at least one skill name")
     parts = [load_skill(name).strip() for name in names]
     return "\n\n---\n\n".join(parts)
