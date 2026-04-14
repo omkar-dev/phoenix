@@ -17,6 +17,7 @@ import mermaid from 'mermaid';
 import { createIssue } from '../lib/github-api.js';
 import { getAgents, getGlobalAiKey } from '../lib/agents.js';
 import { AGENT_BASE_URL } from '../lib/config.js';
+import { nanoid } from 'nanoid';
 import { state } from './state.js';
 const STORAGE_KEY = 'pnx_planning_notes';
 
@@ -261,7 +262,7 @@ function _saveNotes() {
 }
 
 function _uuid() {
-  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return nanoid();
 }
 
 // ── Note CRUD ─────────────────────────────────────────────────────────────────
