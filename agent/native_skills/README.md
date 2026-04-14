@@ -154,3 +154,84 @@ Native skills **do not replace** the OpenHands SDK tools (`FileEditorTool`,
 supplementary textual capabilities — think of them as reusable prompt
 fragments that shape agent behaviour for a specific task type, loaded
 alongside the standard tool set.
+
+---
+
+## Reference skill walkthrough: `summarize_issue`
+
+`summarize_issue` is the canonical reference implementation.  Walk through it
+end-to-end when learning the system or reviewing a new skill contribution.
+
+### 1 — Discover the skill
+
+```python
+from native_skills import list_skills
+
+for skill in list_skills():
+    print(skill["name"], "—", skill["title"])
+# code_review     — Code Review
+# summarize_issue — Summarize Issue
+# write_tests     — Write Tests
+```
+
+### 2 — Inspect the raw content
+
+```python
+from native_skills import load_skill
+
+print(load_skill("summarize_issue"))
+# Prints the full Markdown, including front-matter and all contract sections.
+```
+
+### 3 — Attach to a run (single skill)
+
+```python
+from native_skills import attach_skills
+from models import RunRequest, IssueSpec
+
+req = RunRequest(
+    issue_number=7,
+    repo_full_name="owner/repo",
+    spec=IssueSpec(
+        intent="Fix the dark-mode toggle causing a full page reload",
+        acceptance_criteria=["Toggle switches theme without reload"],
+    ),
+    # attach_skills() returns the Markdown text ready to inject into the prompt.
+    system_prompt=attach_skills("summarize_issue"),
+)
+```
+
+The agent receives the skill text prepended to every task prompt via
+`ImplementerAgent._build_prompt()`.  No other configuration is required.
+
+### 4 — Stack multiple skills
+
+Skills are independent and additive.  Pass several names to `attach_skills()`
+in the order you want them applied:
+
+```python
+# Summarise the issue first, then generate tests for the acceptance criteria.
+req = RunRequest(
+    issue_number=7,
+    repo_full_name="owner/repo",
+    spec=IssueSpec(
+        intent="Fix the dark-mode toggle causing a full page reload",
+        acceptance_criteria=["Toggle switches theme without reload"],
+    ),
+    system_prompt=attach_skills("summarize_issue", "write_tests"),
+)
+```
+
+### 5 — Sandbox compatibility
+
+`attach_skills()` is filesystem-only: no network calls, no installed entry
+points, no paths outside `native_skills/`.  In sandboxed OpenHands runs the
+skill content reaches the agent through one of two complementary paths:
+
+| Path | How |
+|------|-----|
+| **`AGENTS.md`** | Persistent memory loaded automatically at conversation start; `AGENTS.md` lists `summarize_issue` so the agent is always aware of it. |
+| **`spec.context_files`** | Pass `"agent/native_skills/summarize_issue.md"` in `RunRequest.spec.context_files`; the agent reads it as part of its working context. |
+
+Both paths deliver the same Markdown content — the agent can act on it
+immediately without any adapter layer.

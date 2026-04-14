@@ -61,7 +61,10 @@ make clean            # Remove build artifacts
 - `agent/models.py` — Pydantic request/response models
 - `agent/registry.py` — In-memory registry of active runs
 - `agent/config.py` — Environment-based settings with per-repo async locks
-- `agent/native_skills/` — Markdown-based skill definitions loaded by OpenHands SDK (see `SKILL_CONTRACT.md`)
+- `agent/native_skills/` — Markdown-based skill definitions loaded by OpenHands SDK (see `SKILL_CONTRACT.md`).
+  Reference skill: **`summarize_issue`** (`agent/native_skills/summarize_issue.md`) — distils an issue into
+  a structured Problem / Goal / Acceptance-Criteria summary; attach via `attach_skills("summarize_issue")`.
+  Other available skills: `code_review`, `write_tests`.
 
 **Git workflow:** Per-repo base clone at `~/.pnx/repos/{owner}/{repo}`, per-issue worktree for isolation, automatic branch naming from issue number.
 

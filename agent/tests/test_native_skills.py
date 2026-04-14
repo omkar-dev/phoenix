@@ -212,3 +212,99 @@ class TestWriteTestsSkill:
 
     def test_has_examples_section(self, content):
         assert "## Examples" in content
+
+
+class TestSummarizeIssueSkill:
+    """Verify the summarize_issue reference skill satisfies the full skill contract.
+
+    This class is more thorough than the sibling test classes above because
+    summarize_issue is the canonical reference implementation — every contract
+    requirement must be demonstrably present and correct.
+    """
+
+    @pytest.fixture()
+    def content(self):
+        return load_skill("summarize_issue")
+
+    # ── Discoverability ───────────────────────────────────────────────────────
+
+    def test_skill_loadable(self, content):
+        """load_skill() returns a non-empty string."""
+        assert content
+
+    def test_appears_in_list_skills(self):
+        """summarize_issue appears in the list returned by list_skills()."""
+        names = [s["name"] for s in native_skills.list_skills()]
+        assert "summarize_issue" in names
+
+    def test_list_skills_descriptor_fields(self):
+        """The descriptor for summarize_issue has all four required fields."""
+        skill = next(s for s in native_skills.list_skills() if s["name"] == "summarize_issue")
+        assert skill["filename"] == "summarize_issue.md"
+        assert skill["path"].endswith("summarize_issue.md")
+        assert skill["title"]  # non-empty title extracted from the heading
+
+    def test_title_parsed_from_heading(self):
+        """list_skills() extracts the title from '# Skill: Summarize Issue'."""
+        skill = next(s for s in native_skills.list_skills() if s["name"] == "summarize_issue")
+        assert skill["title"] == "Summarize Issue"
+
+    # ── Front-matter (SKILL_CONTRACT § front-matter fields) ───────────────────
+
+    def test_front_matter_delimiters(self, content):
+        """File must open with a YAML front-matter block delimited by ---."""
+        assert content.startswith("---"), "front-matter must be the very first content"
+        # At minimum: opening --- and closing ---
+        assert content.count("---") >= 2
+
+    def test_front_matter_contract_version(self, content):
+        assert "contract_version:" in content
+
+    def test_front_matter_name(self, content):
+        assert 'name: summarize_issue' in content
+
+    def test_front_matter_version(self, content):
+        assert "version:" in content
+
+    def test_front_matter_description(self, content):
+        assert "description:" in content
+
+    # ── Required body sections (SKILL_CONTRACT § required sections) ───────────
+
+    def test_has_description_section(self, content):
+        assert "## Description" in content
+
+    def test_has_inputs_section(self, content):
+        assert "## Inputs" in content
+
+    def test_has_outputs_section(self, content):
+        assert "## Outputs" in content
+
+    def test_has_usage_section(self, content):
+        assert "## Usage" in content
+
+    # ── Optional sections present in the reference implementation ─────────────
+
+    def test_has_examples_section(self, content):
+        assert "## Examples" in content
+
+    def test_has_limitations_section(self, content):
+        assert "## Limitations" in content
+
+    def test_has_see_also_section(self, content):
+        assert "## See Also" in content
+
+    # ── Runtime attachment ─────────────────────────────────────────────────────
+
+    def test_attach_single_skill(self):
+        """attach_skills('summarize_issue') returns non-empty content."""
+        result = attach_skills("summarize_issue")
+        assert result
+        assert "Summarize Issue" in result
+
+    def test_attach_stacked_with_write_tests(self):
+        """Stacking summarize_issue with write_tests produces both skill contents."""
+        result = attach_skills("summarize_issue", "write_tests")
+        assert "Summarize Issue" in result
+        assert "Write Tests" in result
+        assert "\n\n---\n\n" in result
