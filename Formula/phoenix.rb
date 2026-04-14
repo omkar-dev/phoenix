@@ -91,14 +91,14 @@ class Phoenix < Formula
       #{Formula["python@3.12"].opt_bin/"python3"} -m http.server "$FRONTEND_PORT" --directory "$DIST" \
         >/dev/null 2>&1 &
 
-      # Wait for agent to become healthy before opening the browser
-      echo ""
-      echo "  Waiting for services…"
-      for i in $(seq 1 30); do
+      for i in $(seq 1 60); do
         if curl -sf "http://localhost:$AGENT_PORT/health" >/dev/null 2>&1; then
           break
         fi
-        sleep 0.5
+        if (( i % 10 == 0 )); then
+          echo "  Still waiting for agent (${i}s)…"
+        fi
+        sleep 1
       done
 
       echo ""
