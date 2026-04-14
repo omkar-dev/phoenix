@@ -27,6 +27,9 @@ _SKILLS_DIR = Path(__file__).parent
 # Files that live in this directory but are not skills themselves.
 _META_FILES = {"README.md", "SKILL_TEMPLATE.md"}
 
+# Separator inserted between skills when multiple skills are composed together.
+_COMPOSE_SEPARATOR = "\n\n---\n\n"
+
 
 def _parse_title(path: Path) -> str:
     """Extract the human-readable title from the first heading in a skill file.
@@ -131,4 +134,4 @@ def attach_skills(*names: str) -> str:
     if not names:
         raise ValueError("attach_skills() requires at least one skill name")
     parts = [load_skill(name).strip() for name in names]
-    return "\n\n---\n\n".join(parts)
+    return _COMPOSE_SEPARATOR.join(parts)
