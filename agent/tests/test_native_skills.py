@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 
 import native_skills
+from native_skills import attach_skills, load_skill
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -152,3 +153,62 @@ def test_attach_skills_output_is_valid_markdown_separator(skill_dir):
     _write_skill(skill_dir, "b", "# Skill: B\n\nB body.")
     result = native_skills.attach_skills("a", "b")
     assert "\n\n---\n\n" in result
+
+
+# ── Composition correctness (real skill files) ────────────────────────────────
+
+def test_compose_skills_separator_present():
+    """Verify the separator appears *between* the two skill blobs, not just anywhere."""
+    code_review_content = load_skill("code_review").strip()
+    write_tests_content = load_skill("write_tests").strip()
+    composed = attach_skills("code_review", "write_tests")
+    expected = code_review_content + "\n\n---\n\n" + write_tests_content
+    assert composed == expected, "Skills must be joined by the '\\n\\n---\\n\\n' separator"
+
+
+# ── Per-skill content contracts ───────────────────────────────────────────────
+
+class TestCodeReviewSkill:
+    """Verify the code_review skill satisfies the skill content contract."""
+
+    @pytest.fixture()
+    def content(self):
+        return load_skill("code_review")
+
+    def test_skill_loadable(self, content):
+        assert content
+
+    def test_has_description_section(self, content):
+        assert "## Description" in content
+
+    def test_has_usage_section(self, content):
+        assert "## Usage" in content
+
+    def test_has_limitations_section(self, content):
+        assert "## Limitations" in content
+
+    def test_has_examples_section(self, content):
+        assert "## Examples" in content
+
+
+class TestWriteTestsSkill:
+    """Verify the write_tests skill satisfies the skill content contract."""
+
+    @pytest.fixture()
+    def content(self):
+        return load_skill("write_tests")
+
+    def test_skill_loadable(self, content):
+        assert content
+
+    def test_has_description_section(self, content):
+        assert "## Description" in content
+
+    def test_has_usage_section(self, content):
+        assert "## Usage" in content
+
+    def test_has_limitations_section(self, content):
+        assert "## Limitations" in content
+
+    def test_has_examples_section(self, content):
+        assert "## Examples" in content
