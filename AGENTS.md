@@ -19,7 +19,7 @@ make dev-semantic     # Semantic service only
 
 ### Testing
 ```bash
-make test             # Run all tests
+make test             # Run backend tests (frontend tests: make test-frontend)
 cd agent && pytest    # Run backend tests
 cd agent && pytest tests/test_file.py::test_name  # Run a single test
 ```
