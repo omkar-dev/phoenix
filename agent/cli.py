@@ -263,14 +263,17 @@ def cmd_start(args: argparse.Namespace) -> int:
             f"Error: Issue #{issue_number} not found in {repo_name}.",
             file=sys.stderr,
         )
-        return 1
-
-    if issue.pull_request:
-        print(
-            f"Error: #{issue_number} is a pull request, not an issue.",
-            file=sys.stderr,
-        )
-        return 1
+    from_column = "triage"
+    for name in current_labels:
+        lower = name.lower()
+        matched = False
+        for kw, col in _STATUS_KEYWORDS.items():
+            if kw in lower:
+                from_column = col
+                matched = True
+                break
+        if matched:
+            break
 
     if issue.state != "open":
         print(
