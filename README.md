@@ -38,12 +38,55 @@ See [src/ARCHITECTURE.md](src/ARCHITECTURE.md) for a deeper explanation of the f
 - A GitHub Personal Access Token (classic, `repo` scope)
 - An Anthropic API key (or any LiteLLM-compatible key)
 
-## Quick start
+## Install via Homebrew
+
+The quickest way to get Phoenix running on macOS (or Linux with [Linuxbrew](https://docs.brew.sh/Homebrew-on-Linux)):
+
+```bash
+# 1. Add the tap
+brew tap omkar-dev/phoenix https://github.com/omkar-dev/phoenix
+
+# 2. Install (installs Python agent + Astro frontend in one step)
+brew install phoenix
+
+# 3. Export credentials (or add them to ~/.zshrc / ~/.bashrc)
+export GITHUB_TOKEN="ghp_..."          # GitHub PAT — repo + pull_request:write scope
+export ANTHROPIC_API_KEY="sk-ant-..."  # Anthropic API key
+
+# 4. Launch everything
+pnx
+```
+
+`pnx` starts the agent API (port 8001), semantic service (port 3001), and the board
+frontend (port 4321) and opens `http://localhost:4321` in your browser automatically.
+
+If `GITHUB_TOKEN` or `ANTHROPIC_API_KEY` are not exported, `pnx` will prompt you for them
+interactively on first run.
+
+> **Development snapshot** — while a stable release tag is pending, install from `HEAD`:
+> ```bash
+> brew install phoenix --HEAD
+> ```
+
+### Upgrade
+
+```bash
+brew upgrade phoenix
+```
+
+### Uninstall
+
+```bash
+brew uninstall phoenix
+brew untap omkar-dev/phoenix
+```
+
+## Quick start (from source)
 
 ```bash
 # 1. Clone
-git clone https://github.com/your-org/phoenix.git
-cd phoenix/v5
+git clone https://github.com/omkar-dev/phoenix.git
+cd phoenix
 
 # 2. Configure the agent
 cp agent/.env.example agent/.env
