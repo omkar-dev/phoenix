@@ -179,10 +179,7 @@ def _stream_refine_events(agent_url: str, stream_url: str) -> int:
             f"{agent_url}{stream_url}",
             headers={"Accept": "text/event-stream"},
         )
-        resp = urllib.request.urlopen(req, timeout=120)
-    except Exception as exc:
-        print(f"Error: Failed to connect to SSE stream: {exc}", file=sys.stderr)
-        return 1
+    with urllib.request.urlopen(req, timeout=120) as resp:
 
     try:
         for raw_line in resp:
