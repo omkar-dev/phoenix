@@ -106,6 +106,6 @@ async def test_movements_log_without_actor_is_null(client):
     })
     assert resp.status_code == 200
 
-    resp = await client.get("/movements?repo=owner/repo")
+    assert resp.status_code == 204
     data = resp.json()
     assert data[0]["actor"] is None
