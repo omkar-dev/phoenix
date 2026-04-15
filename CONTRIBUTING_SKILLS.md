@@ -172,8 +172,7 @@ After `## Usage` you may add any of:
 
 Delete any optional section you do not need.
 
-### Step 8 — verify the skill is discoverable
-
+python -c "from native_skills import list_skills; print({s['name']: s['title'] for s in list_skills()})"
 ```bash
 cd agent
 python -c "from native_skills import list_skills; [print(s['name'], '-', s['title']) for s in list_skills()]"
