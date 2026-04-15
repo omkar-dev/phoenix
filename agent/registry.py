@@ -14,6 +14,9 @@ class AgentResult:
     files_changed: list[str] = field(default_factory=list)
     summary: str = ""
     error: str | None = None
+    interrupted: bool = False       # True when MaxIterationsReached (partial work preserved)
+    worktree_path: str | None = None  # preserved worktree dir when interrupted
+    branch: str | None = None         # branch name when interrupted
 
 
 @dataclass

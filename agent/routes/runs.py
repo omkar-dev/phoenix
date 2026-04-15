@@ -61,6 +61,13 @@ async def run_status(run_id: str) -> dict:
         return {"status": "running"}
     result = state.result
     if result is None or not result.success:
+        if result and result.interrupted:
+            return {
+                "status": "interrupted",
+                "error": result.error,
+                "worktree_path": result.worktree_path,
+                "branch": result.branch,
+            }
         return {"status": "failed", "error": result.error if result else "unknown"}
     return {
         "status": "complete",
@@ -107,6 +114,15 @@ async def cancel_run(run_id: str) -> dict:
 @router.get("/runs/{run_id}/logs")
 async def get_run_logs(run_id: str) -> list[dict]:
     return await _db.get_run_logs(run_id)
+
+
+@router.get("/runs/{run_id}/interrupted")
+async def get_interrupted_state(run_id: str) -> dict:
+    """Return the saved worktree/branch for an interrupted run."""
+    state = await _db.get_interrupted_run(run_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="No interrupted state found")
+    return state
 
 
 @router.post("/push-direct")

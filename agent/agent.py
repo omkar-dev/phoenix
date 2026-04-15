@@ -32,6 +32,11 @@ except ImportError:
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 
+try:
+    from openhands.sdk.exceptions import MaxIterationsReached as _MaxIterationsReached
+except ImportError:
+    _MaxIterationsReached = None
+
 from config import (
     ANTHROPIC_API_KEY,
     BASE_REPOS_DIR,
@@ -160,8 +165,23 @@ class ImplementerAgent:
             await self._setup_worktree()
             result = await self._run_agent()
             if not result.success:
-                await self.emit("error", {"message": result.error or "Agent run failed"})
-                asyncio.create_task(self._cleanup_worktree())
+                if result.interrupted:
+                    # Partial work exists — preserve the worktree so the user can continue.
+                    await self.emit("interrupted", {
+                        "message": result.error or "Reached maximum iterations",
+                        "worktree_path": result.worktree_path,
+                        "branch": result.branch,
+                    })
+                    asyncio.create_task(_db.save_interrupted_run(
+                        self.run_id,
+                        self.request.repo_full_name,
+                        self.request.issue_number,
+                        result.worktree_path,
+                        result.branch,
+                    ))
+                else:
+                    await self.emit("error", {"message": result.error or "Agent run failed"})
+                    asyncio.create_task(self._cleanup_worktree())
                 return result
             await self._commit_local(result)
             if self.request.autonomy == "autonomous":
@@ -512,7 +532,19 @@ class ImplementerAgent:
             finally:
                 heartbeat_task.cancel()
         except Exception as exc:
-            return AgentResult(success=False, error=str(exc))
+            is_max_iter = (
+                (_MaxIterationsReached is not None and isinstance(exc, _MaxIterationsReached))
+                or "MaxIterations" in type(exc).__name__
+                or "max_iterations" in str(exc).lower()
+                or "maximum iterations" in str(exc).lower()
+            )
+            return AgentResult(
+                success=False,
+                error=str(exc),
+                interrupted=is_max_iter,
+                worktree_path=str(self.work_dir) if is_max_iter and self.work_dir else None,
+                branch=self._worktree_branch if is_max_iter else None,
+            )
 
         return self._parse_conversation()
 

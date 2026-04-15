@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { drawerSignal, closeDrawer, setDrawerTab, runsSignal, logsSignal, suggestionsSignal, dismissSuggestion, issueTeamMetaSignal } from '../../lib/signals.js';
-import { triggerImplement, triggerAddressPRComments, triggerResolveConflicts, triggerReimplement, cancelRun, pushRun } from '../../scripts/run-dispatcher.js';
+import { triggerImplement, triggerAddressPRComments, triggerResolveConflicts, triggerReimplement, cancelRun,triggerContinue, pushRun } from '../../scripts/run-dispatcher.js';
 import { setPrUnresolved, setPrConflicts } from '../../lib/implementer.js';
 import { updateIssue, fetchIssueComments, createIssueComment, fetchOrgMembers, fetchRepoLabels, createRepoLabel, fetchPRReviewThreads, fetchPRMergeable } from '../../lib/github-api.js';
 import { getAgents, getTeams, getCodeEditor, getIssueTeam, setIssueTeam, clearIssueTeamMeta } from '../../lib/agents.js';
@@ -181,12 +181,14 @@ function AIStatusRow({ run, issueNumber }: { run: Run | undefined; issueNumber: 
     running: 'autorenew',
     done: 'check_circle',
     failed: 'error_outline',
+    interrupted: 'pause_circle',
     needs_review: 'upload',
   };
   const colors: Record<string, string> = {
     running: '#003d9b',
     done: '#1a7a4a',
     failed: '#ba1a1a',
+    interrupted: '#b45309',
     needs_review: '#7c3aed',
   };
   const icon = icons[run.status] ?? 'autorenew';
@@ -1073,9 +1075,9 @@ function DetailsTab({ issue }: { issue: Issue }) {
         </div>
       )}
 
+      <div
         onClick={() => { if (!editingTitle && !titleSaving) { setTitleError(null); setEditingTitle(true); } }}
         class="group relative cursor-text rounded-lg px-2 py-1.5 -mx-2 transition-colors hover:bg-[#edeef0]"
-        onClick={() => !editingTitle && !titleSaving && setEditingTitle(true)}
       >
         <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/50 mb-1">
           #{issue.number}
@@ -1534,6 +1536,7 @@ function AITab({ issue }: { issue: Issue }) {
   }
 
   const isIdleOrFailed = status === 'idle' || status === 'failed';
+  const isInterrupted = status === 'interrupted';
 
   if ((issue as any)._local) {
     return (
@@ -1761,6 +1764,33 @@ function AITab({ issue }: { issue: Issue }) {
           </button>
         )}
 
+        {isInterrupted && (
+          <div class="space-y-2">
+            <button
+              onClick={() => {
+                triggerContinue(issue, '', selectedAgentId || null);
+                setDrawerTab('logs');
+              }}
+              class="flex items-center justify-center gap-1.5 w-full text-on-primary text-xs font-semibold py-2 rounded-lg transition-all active:scale-95"
+              style="background:linear-gradient(135deg,#b45309,#d97706)"
+            >
+              <span class="material-symbols-outlined" style="font-size:14px">play_circle</span>
+              Continue
+            </button>
+            <button
+              onClick={() => {
+                triggerImplement(issue);
+                setDrawerTab('logs');
+              }}
+              class="flex items-center justify-center gap-1.5 w-full text-xs font-semibold py-2 rounded-lg transition-all active:scale-95"
+              style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d"
+            >
+              <span class="material-symbols-outlined" style="font-size:14px">restart_alt</span>
+              Start Fresh
+            </button>
+          </div>
+        )}
+
         {(status === 'done' || status === 'needs_review' || status === 'cancelled') && (
           <div class="pt-2 space-y-2 border-t" style="border-color:#c3c6d6">
             <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
@@ -1949,6 +1979,12 @@ function RunStatusBadge({ status, isActive, onCancel, onPush, pushLoading }: {
     <div class="flex items-center gap-1 text-[10px] font-semibold" style="color:#ba1a1a">
       <span class="material-symbols-outlined" style="font-size:11px">error</span>
       Failed
+    </div>
+  );
+  if (status === 'interrupted') return (
+    <div class="flex items-center gap-1 text-[10px] font-semibold" style="color:#b45309">
+      <span class="material-symbols-outlined" style="font-size:11px">pause_circle</span>
+      Interrupted
     </div>
   );
   if (status === 'needs_review') return (

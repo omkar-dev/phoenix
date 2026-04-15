@@ -4,7 +4,7 @@ const LOG_STORE_KEY = 'pnx_agent_logs';
 const RUN_STORE_KEY = 'pnx_run_store';
 const DISMISSED_SUGGESTIONS_KEY = 'pnx_dismissed_suggestions';
 
-/** @type {Map<number, {status:'pending'|'idle'|'running'|'cancelled'|'done'|'failed'|'needs_review', step:string, prUrl:string|null, model:string|null, cost:{inputTokens:number,outputTokens:number,estimatedUsd:number,model:string}|null}>} */
+/** @type {Map<number, {status:'pending'|'idle'|'running'|'cancelled'|'done'|'failed'|'interrupted'|'needs_review', step:string, prUrl:string|null, branch:string|null, worktreePath:string|null, model:string|null, cost:{inputTokens:number,outputTokens:number,estimatedUsd:number,model:string}|null}>} */
 export const runStore = new Map();
 
 /** @type {Map<number, Array<{type:string,message:string,ts:number,tool?:string,path?:string}>>} */
@@ -81,7 +81,9 @@ const _pendingReconnects = [];
     if (rawRuns) {
       const data = JSON.parse(rawRuns);
       Object.entries(data).forEach(([k, v]) => {
-        if (v.status === 'pending') {
+        if (v.status === 'interrupted') {
+          // Preserve interrupted state — user may want to continue
+        } else if (v.status === 'pending') {
           // Never got a run_id — definitely interrupted
           v = { ...v, status: 'failed', step: 'Interrupted' };
         } else if (v.status === 'running') {
@@ -431,6 +433,25 @@ function _openStream(issueNumber, url, skipBeforeTs = 0) {
         es.close();
         _eventSources.delete(issueNumber);
         break;
+      case 'interrupted': {
+        // Agent hit its iteration limit — partial work is preserved on the branch.
+        const { message, worktree_path, branch } = event.data;
+        _set(issueNumber, {
+          ...cur,
+          status: 'interrupted',
+          step: message || 'Reached maximum iterations',
+          branch: branch ?? cur.branch ?? null,
+          worktreePath: worktree_path ?? cur.worktreePath ?? null,
+          prUrl: null,
+        });
+        _log(issueNumber, {
+          type: 'interrupted',
+          message: message || 'Agent interrupted — iterations limit reached. Click Continue to resume.',
+        });
+        es.close();
+        _eventSources.delete(issueNumber);
+        break;
+      }
       case 'close':
         if (cur?.status === 'running') {
           _set(issueNumber, { ...cur, status: 'failed', step: 'Agent stopped unexpectedly', prUrl: null });
@@ -609,12 +630,38 @@ async function _reconnectRun(issueNumber) {
     });
 
     if (!resp.ok) {
-      // 404 = server was restarted and lost the run; treat as interrupted
+      // 404 = server was restarted and lost in-memory run state.
+      // Try loading DB logs to distinguish between a clean failure and an interrupted run.
+      try {
+        const { lastEventType, lastEventData } = await _loadBackendLogs(issueNumber, runId, endpoint);
+        if (lastEventType === 'interrupted') {
+          _set(issueNumber, {
+            ...runStore.get(issueNumber),
+            status: 'interrupted',
+            step: lastEventData?.message || 'Reached maximum iterations',
+            branch: lastEventData?.branch ?? null,
+            worktreePath: lastEventData?.worktree_path ?? null,
+          });
+          return;
+        }
+      } catch { /* ignore — fall through to failed */ }
       _set(issueNumber, { ...runStore.get(issueNumber), status: 'failed', step: 'Interrupted' });
       return;
     }
 
     const status = await resp.json();
+
+    // Interrupted runs: restore state and stop — don't reopen stream.
+    if (status.status === 'interrupted') {
+      _set(issueNumber, {
+        ...runStore.get(issueNumber),
+        status: 'interrupted',
+        step: status.error || 'Reached maximum iterations',
+        branch: status.branch ?? null,
+        worktreePath: status.worktree_path ?? null,
+      });
+      return;
+    }
 
     // Load authoritative log history from the DB regardless of outcome
     const { lastTs, lastEventType, lastEventData } = await _loadBackendLogs(issueNumber, runId, endpoint);
@@ -853,6 +900,22 @@ export function cancelRun(issueNumber) {
   }
   _set(issueNumber, { ...(run ?? {}), status: 'cancelled', step: 'Cancelled by user', prUrl: run?.prUrl ?? null });
   _log(issueNumber, { type: 'error', message: 'Stopped by user' });
+}
+
+// ── Continue an interrupted run ───────────────────────────────
+
+/**
+ * Mark an interrupted run as ready for continuation.
+ * Returns the saved branch name so the caller can pass it as `existingBranch`
+ * when spawning a new implement run.
+ *
+ * @param {number} issueNumber
+ * @returns {{ branch: string|null, worktreePath: string|null }}
+ */
+export function getInterruptedState(issueNumber) {
+  const run = runStore.get(issueNumber);
+  if (run?.status !== 'interrupted') return { branch: null, worktreePath: null };
+  return { branch: run.branch ?? null, worktreePath: run.worktreePath ?? null };
 }
 
 // ── Delegation log helper ─────────────────────────────────────

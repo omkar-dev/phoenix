@@ -16,6 +16,7 @@ import {
   runStore,
   suggestionStore,
   logDelegation,
+  getInterruptedState,
 } from '../lib/implementer.js';
 import { getAgents, getTeams, getIssueTeam, getGlobalAiKey, getAgentMaxIterations } from '../lib/agents.js';
 import { moveCard } from '../lib/board.js';
@@ -201,6 +202,43 @@ export function triggerReimplement(issue, userPrompt = '', overrideAgentId = nul
   }
 
   implement(issue, issueRepo, { ..._agentConfig(agent, null), ...(userPrompt ? { userPrompt } : {}) });
+}
+
+/**
+ * Continue an interrupted run from where it left off.
+ * Reuses the existing branch so the agent picks up all partial work.
+ *
+ * @param {object} issue  GitHub issue object
+ * @param {string} [userPrompt]  Optional additional guidance
+ * @param {string|null} [overrideAgentId]
+ */
+export function triggerContinue(issue, userPrompt = '', overrideAgentId = null) {
+  const agents = getAgents();
+  const issueRepo = state.issueSourceRepo || state.repoFullName;
+  const { branch } = getInterruptedState(issue.number);
+
+  let agent = null;
+  if (overrideAgentId) {
+    agent = agents.find((a) => a.id === overrideAgentId) ?? null;
+  }
+  if (!agent) {
+    agent =
+      agents.find((a) => a.actionType === 'implement') ??
+      agents.find((a) => a.id === 'implementer');
+  }
+
+  const continuationNote = [
+    'You are continuing a previous run that was stopped at the iteration limit.',
+    'The partial work already done is on this branch — review what has been completed,',
+    'then pick up exactly where it left off without re-doing finished work.',
+    ...(userPrompt ? [`Additional guidance: ${userPrompt}`] : []),
+  ].join(' ');
+
+  implement(issue, issueRepo, {
+    ..._agentConfig(agent, null),
+    ...(branch ? { existingBranch: branch } : {}),
+    userPrompt: continuationNote,
+  });
 }
 
 /**
