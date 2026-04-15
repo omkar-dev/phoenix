@@ -218,6 +218,31 @@ export function setCodeEditor(id) {
   localStorage.setItem('pnx_code_editor', id);
 }
 
+// ── Terminal agent config ─────────────────────────────────────
+
+const TERMINAL_CONFIG_KEY = 'pnx_terminal_config';
+
+const DEFAULT_TERMINAL_CONFIG = {
+  mode: 'claude_code',
+  model: 'claude-sonnet-4-6',
+  apiKey: '',
+};
+
+export function getTerminalConfig() {
+  try {
+    const stored = localStorage.getItem(TERMINAL_CONFIG_KEY);
+    return stored ? { ...DEFAULT_TERMINAL_CONFIG, ...JSON.parse(stored) } : { ...DEFAULT_TERMINAL_CONFIG };
+  } catch {
+    return { ...DEFAULT_TERMINAL_CONFIG };
+  }
+}
+
+export function setTerminalConfig(patch) {
+  const current = getTerminalConfig();
+  const updated = { ...current, ...patch };
+  localStorage.setItem(TERMINAL_CONFIG_KEY, JSON.stringify(updated));
+}
+
 // ── Lane action resolver ──────────────────────────────────────
 
 /**

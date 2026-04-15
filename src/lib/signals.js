@@ -32,6 +32,7 @@ export const runHistoryOpenSignal = signal(false);
 export const agentsPanelOpenSignal = signal(false);
 export const teamsPanelOpenSignal = signal(false);
 export const planningPanelOpenSignal = signal(false);
+export const claudeSessionOpenSignal = signal(false);
 
 // Drawer: carries the selected issue + active tab so the island re-renders on
 // every open/close/tab-switch without any extra prop drilling.

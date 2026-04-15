@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 import db as _db
 from config import CORS_ORIGINS
-from routes import movements, notes, refine, repos, runs, worktree
+from routes import claude_sessions, movements, notes, refine, repos, runs, worktree
 
 app = FastAPI(title="Phoenix ImplementerAgent", version="5.0.0")
 
@@ -18,9 +18,11 @@ app = FastAPI(title="Phoenix ImplementerAgent", version="5.0.0")
 async def _on_startup() -> None:
     """Initialise SQLite DB and clean up stale worktrees from previous crashes."""
     await _db.init_db()
+    # Clean up stale *run* worktrees (pnx-<8hex>) but NOT session worktrees
+    # (pnx-session-*) — sessions must persist between page reloads for --resume.
     tmp = Path(tempfile.gettempdir())
     for d in tmp.glob("pnx-*"):
-        if d.is_dir():
+        if d.is_dir() and not d.name.startswith("pnx-session-"):
             try:
                 shutil.rmtree(d, ignore_errors=True)
             except Exception:
@@ -104,3 +106,4 @@ app.include_router(worktree.router)
 app.include_router(repos.router)
 app.include_router(movements.router)
 app.include_router(notes.router)
+app.include_router(claude_sessions.router)

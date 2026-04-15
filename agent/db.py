@@ -18,6 +18,41 @@ import aiosqlite
 DB_PATH = Path.home() / ".pnx" / "pnx.db"
 
 _DDL = """
+CREATE TABLE IF NOT EXISTS claude_sessions (
+    id                TEXT PRIMARY KEY,
+    repo              TEXT NOT NULL,
+    project_path      TEXT NOT NULL,
+    worktree_path     TEXT,
+    claude_session_id TEXT,
+    mode              TEXT DEFAULT 'claude_code',
+    model             TEXT DEFAULT '',
+    api_key           TEXT DEFAULT '',
+    status            TEXT DEFAULT 'idle',
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_claude_sessions_repo ON claude_sessions(repo);
+
+CREATE TABLE IF NOT EXISTS claude_session_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL,
+    role        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    logged_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_claude_session_messages
+    ON claude_session_messages(session_id, logged_at);
+
+CREATE TABLE IF NOT EXISTS claude_session_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    logged_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_claude_session_events
+    ON claude_session_events(session_id, logged_at);
+
 CREATE TABLE IF NOT EXISTS repos (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name    TEXT UNIQUE NOT NULL,
@@ -101,6 +136,51 @@ async def init_db() -> None:
                 await db.commit()
             except Exception:
                 pass  # column already exists
+        # Migration: create claude_sessions and related tables.
+        try:
+            await db.executescript("""
+                CREATE TABLE IF NOT EXISTS claude_sessions (
+                    id                TEXT PRIMARY KEY,
+                    repo              TEXT NOT NULL,
+                    project_path      TEXT NOT NULL,
+                    worktree_path     TEXT,
+                    claude_session_id TEXT,
+                    mode              TEXT DEFAULT 'claude_code',
+                    model             TEXT DEFAULT '',
+                    status            TEXT DEFAULT 'idle',
+                    created_at        TEXT NOT NULL,
+                    updated_at        TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_claude_sessions_repo ON claude_sessions(repo);
+                CREATE TABLE IF NOT EXISTS claude_session_events (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id  TEXT NOT NULL,
+                    event_type  TEXT NOT NULL,
+                    payload     TEXT NOT NULL,
+                    logged_at   TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_claude_session_events
+                    ON claude_session_events(session_id, logged_at);
+                CREATE TABLE IF NOT EXISTS claude_session_messages (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id  TEXT NOT NULL,
+                    role        TEXT NOT NULL,
+                    content     TEXT NOT NULL,
+                    logged_at   TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_claude_session_messages
+                    ON claude_session_messages(session_id, logged_at);
+            """)
+            await db.commit()
+        except Exception:
+            pass
+        # Migration: add mode/model/api_key columns to existing claude_sessions tables.
+        for col_def in ("mode TEXT DEFAULT 'claude_code'", "model TEXT DEFAULT ''", "api_key TEXT DEFAULT ''"):
+            try:
+                await db.execute(f"ALTER TABLE claude_sessions ADD COLUMN {col_def}")
+                await db.commit()
+            except Exception:
+                pass
 
 
 # ── Repos ──────────────────────────────────────────────────────────────────────
@@ -280,4 +360,133 @@ async def get_run_logs(run_id: str) -> list[dict]:
         except (json.JSONDecodeError, TypeError):
             pass
         result.append(d)
+    return result
+
+
+# ── Claude Sessions ────────────────────────────────────────────────────────────
+
+async def create_claude_session(
+    session_id: str,
+    repo: str,
+    project_path: str,
+    worktree_path: str | None = None,
+    mode: str = "claude_code",
+    model: str = "",
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO claude_sessions
+                (id, repo, project_path, worktree_path, mode, model, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, repo, project_path, worktree_path, mode, model, now, now),
+        )
+        await db.commit()
+
+
+async def get_claude_session(session_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM claude_sessions WHERE id = ?", (session_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def update_claude_session(session_id: str, **kwargs) -> None:
+    if not kwargs:
+        return
+    now = datetime.now(UTC).isoformat()
+    kwargs["updated_at"] = now
+    fields = ", ".join(f"{k} = ?" for k in kwargs)
+    values = list(kwargs.values()) + [session_id]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE claude_sessions SET {fields} WHERE id = ?", values
+        )
+        await db.commit()
+
+
+async def list_claude_sessions(repo: str | None = None, limit: int = 50) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if repo:
+            async with db.execute(
+                "SELECT * FROM claude_sessions WHERE repo = ? ORDER BY updated_at DESC LIMIT ?",
+                (repo, limit),
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                "SELECT * FROM claude_sessions ORDER BY updated_at DESC LIMIT ?",
+                (limit,),
+            ) as cur:
+                rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def delete_claude_session(session_id: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM claude_session_events WHERE session_id = ?", (session_id,))
+        await db.execute("DELETE FROM claude_sessions WHERE id = ?", (session_id,))
+        await db.commit()
+
+
+async def append_claude_session_event(
+    session_id: str, event_type: str, payload: dict
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO claude_session_events (session_id, event_type, payload, logged_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (session_id, event_type, json.dumps(payload), now),
+        )
+        await db.commit()
+
+
+async def append_claude_session_message(session_id: str, role: str, content: str) -> None:
+    """Persist a conversation message for API-mode history."""
+    now = datetime.now(UTC).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO claude_session_messages (session_id, role, content, logged_at) VALUES (?, ?, ?, ?)",
+            (session_id, role, content, now),
+        )
+        await db.commit()
+
+
+async def get_claude_session_messages(session_id: str) -> list[dict]:
+    """Return full conversation history for API-mode sessions (oldest first)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT role, content FROM claude_session_messages WHERE session_id = ? ORDER BY id ASC",
+            (session_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+
+async def get_claude_session_events(session_id: str, limit: int = 200) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT event_type, payload, logged_at FROM claude_session_events "
+            "WHERE session_id = ? ORDER BY id ASC LIMIT ?",
+            (session_id, limit),
+        ) as cur:
+            rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        try:
+            payload = json.loads(r["payload"])
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+        result.append({"event_type": r["event_type"], "payload": payload, "logged_at": r["logged_at"]})
     return result

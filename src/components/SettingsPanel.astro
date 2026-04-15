@@ -67,6 +67,13 @@
         GitHub
       </button>
       <button
+        data-settings-nav="terminal"
+        class="settings-nav flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold w-full text-left transition-all"
+      >
+        <span class="material-symbols-outlined" style="font-size:16px">terminal</span>
+        Terminal
+      </button>
+      <button
         data-settings-nav="history"
         class="settings-nav flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold w-full text-left transition-all"
       >
@@ -288,6 +295,85 @@
           </div>
         </section>
 
+        <!-- ══ Terminal Agent ══ -->
+        <section id="settings-section-terminal" class="hidden">
+          <div class="mb-5">
+            <h2
+              class="text-lg font-bold tracking-tight"
+              style="color:#191c1e;font-family:'Manrope',sans-serif"
+            >
+              Terminal Agent
+            </h2>
+            <p class="text-[12px] mt-0.5 max-w-md leading-relaxed" style="color:#6b6f80">
+              Backend used by the Claude terminal panel. Choose Claude Code CLI for full tool
+              use and file editing, or an API provider for conversational chat.
+            </p>
+          </div>
+
+          <div
+            class="bg-surface-container-lowest rounded-xl p-5 space-y-5"
+            style="border:1.5px solid rgba(195,198,214,0.4)"
+          >
+            <!-- Mode selector -->
+            <div>
+              <p class="text-[12px] font-semibold mb-3" style="color:#434654">Mode</p>
+              <div id="terminal-mode-grid" class="grid grid-cols-2 gap-2.5"></div>
+            </div>
+
+            <!-- Model + API key — hidden for claude_code -->
+            <div id="terminal-api-fields" class="space-y-4 hidden">
+              <div style="border-top:1px solid rgba(195,198,214,0.3)"></div>
+
+              <!-- Model selector -->
+              <div>
+                <p class="text-[12px] font-semibold mb-1.5" style="color:#434654">Model</p>
+                <select
+                  id="terminal-model-select"
+                  class="w-full text-[12px] px-3 py-2.5 rounded-lg"
+                  style="border:1.5px solid rgba(195,198,214,0.5);background:#f9f9fb;color:#191c1e;outline:none"
+                ></select>
+              </div>
+
+              <!-- API key -->
+              <div>
+                <p class="text-[12px] font-semibold mb-1.5" style="color:#434654">API Key</p>
+                <p class="text-[11px] mb-2" style="color:#6b6f80">
+                  Stored locally in your browser only.
+                </p>
+                <div class="flex gap-2">
+                  <div class="relative flex-1">
+                    <input
+                      id="terminal-key-input"
+                      type="password"
+                      placeholder="Paste API key…"
+                      autocomplete="off"
+                      class="w-full text-[12px] px-3 py-2.5 rounded-lg font-mono"
+                      style="border:1.5px solid rgba(195,198,214,0.5);background:#f9f9fb;color:#191c1e;outline:none"
+                    />
+                    <button
+                      id="terminal-key-toggle"
+                      class="absolute right-2.5 top-1/2 -translate-y-1/2"
+                      style="color:#9ca3af"
+                    >
+                      <span class="material-symbols-outlined" style="font-size:16px">visibility</span>
+                    </button>
+                  </div>
+                  <button
+                    id="terminal-key-save"
+                    class="flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-2 rounded-lg transition-all active:scale-95 shrink-0"
+                    style="background:#003d9b;color:#fff"
+                  >
+                    Save
+                  </button>
+                </div>
+                <p id="terminal-key-saved-msg" class="text-[11px] mt-2 hidden" style="color:#1a7a4a">
+                  Saved.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- ══ History ══ -->
         <section id="settings-section-history" class="hidden">
           <div class="mb-5">
@@ -376,8 +462,8 @@
 </style>
 
 <script>
-  import { CODE_EDITORS, DEFAULT_AGENT_MAX_ITERATIONS } from '../lib/constants.js';
-  import { getCodeEditor, setCodeEditor, getCustomEditorCmd, setCustomEditorCmd, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getAgentMaxIterations, setAgentMaxIterations } from '../lib/agents.js';
+  import { CODE_EDITORS, TERMINAL_MODES } from '../lib/constants.js';
+  import { getCodeEditor, setCodeEditor, getCustomEditorCmd, setCustomEditorCmd, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getTerminalConfig, setTerminalConfig } from '../lib/agents.js';
   import { clearHistory } from '../lib/implementer.js';
   import { clearCardLanes } from '../lib/board.js';
 
@@ -509,8 +595,83 @@
     });
   }
 
+  // ── Terminal section ──────────────────────────────────────────
+  function renderTerminalModeGrid() {
+    const grid = document.getElementById('terminal-mode-grid');
+    if (!grid) return;
+    const cfg = getTerminalConfig();
+    grid.innerHTML = TERMINAL_MODES.map((m) => {
+      const selected = m.id === cfg.mode;
+      return `<button data-terminal-mode="${m.id}"
+        class="flex items-start gap-3 px-3.5 py-3 rounded-xl text-left transition-all"
+        style="background:${selected ? '#eff6ff' : '#ffffff'};border:1.5px solid ${selected ? '#003d9b40' : 'rgba(195,198,214,0.4)'}">
+        <span class="material-symbols-outlined shrink-0 mt-0.5" style="font-size:18px;color:${selected ? '#003d9b' : '#737685'}">${m.icon}</span>
+        <div class="min-w-0">
+          <p class="text-[12px] font-semibold leading-tight" style="color:${selected ? '#003d9b' : '#434654'}">${m.label}</p>
+          <p class="text-[10px] mt-0.5 leading-snug" style="color:#6b6f80">${m.desc}</p>
+        </div>
+      </button>`;
+    }).join('');
+
+    grid.querySelectorAll('[data-terminal-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = (btn as HTMLElement).dataset.terminalMode ?? 'claude_code';
+        setTerminalConfig({ mode });
+        renderTerminalModeGrid();
+        syncTerminalApiFields();
+      });
+    });
+  }
+
+  function syncTerminalApiFields() {
+    const cfg = getTerminalConfig();
+    const mode = TERMINAL_MODES.find((m) => m.id === cfg.mode);
+    const apiFields = document.getElementById('terminal-api-fields');
+    if (!apiFields) return;
+
+    if (!mode || !mode.needsKey) {
+      apiFields.classList.add('hidden');
+      return;
+    }
+    apiFields.classList.remove('hidden');
+
+    // Populate model select
+    const sel = document.getElementById('terminal-model-select') as HTMLSelectElement;
+    if (sel) {
+      sel.innerHTML = mode.models.map((mod) =>
+        `<option value="${mod}" ${mod === cfg.model ? 'selected' : ''}>${mod}</option>`
+      ).join('');
+      sel.onchange = () => setTerminalConfig({ model: sel.value });
+    }
+
+    // Populate API key
+    const keyInput = document.getElementById('terminal-key-input') as HTMLInputElement;
+    if (keyInput) keyInput.value = cfg.apiKey || '';
+  }
+
+  function initTerminalSection() {
+    renderTerminalModeGrid();
+    syncTerminalApiFields();
+
+    document.getElementById('terminal-key-toggle')?.addEventListener('click', () => {
+      const input = document.getElementById('terminal-key-input') as HTMLInputElement;
+      input.type = input.type === 'password' ? 'text' : 'password';
+      const icon = document.querySelector('#terminal-key-toggle .material-symbols-outlined');
+      if (icon) icon.textContent = input.type === 'password' ? 'visibility' : 'visibility_off';
+    });
+
+    document.getElementById('terminal-key-save')?.addEventListener('click', () => {
+      const input = document.getElementById('terminal-key-input') as HTMLInputElement;
+      setTerminalConfig({ apiKey: input.value.trim() });
+      const msg = document.getElementById('terminal-key-saved-msg');
+      if (!msg) return;
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 2000);
+    });
+  }
+
   // ── Nav switching ─────────────────────────────────────────────
-  const SECTIONS = ['editor', 'ai', 'github', 'history'];
+  const SECTIONS = ['editor', 'ai', 'github', 'terminal', 'history'];
 
   function showSection(name: string) {
     document.querySelectorAll('[data-settings-nav]').forEach((btn) => {
@@ -557,12 +718,14 @@
     panel?.classList.remove('flex');
   });
 
-  document.addEventListener('open-settings-panel', () => {
+  document.addEventListener('open-settings-panel', (e: Event) => {
     renderEditorGrid();
     initCustomCmdSection();
     initAiSection();
     initGithubSection();
-    showSection('editor');
+    initTerminalSection();
+    const section = (e as CustomEvent).detail?.section ?? 'editor';
+    showSection(section);
     panel?.classList.remove('hidden');
     panel?.classList.add('flex');
   });

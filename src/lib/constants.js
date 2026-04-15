@@ -74,6 +74,42 @@ export function calcRunCost(inputTokens, outputTokens, model) {
 
 export const DEFAULT_AGENT_MAX_ITERATIONS = 50;
 
+// ── Terminal agent modes ───────────────────────────────────────────────────────
+export const TERMINAL_MODES = [
+  {
+    id: 'claude_code',
+    label: 'Claude Code',
+    icon: 'terminal',
+    desc: 'Local claude CLI — full tool use, file editing, git ops',
+    needsKey: false,
+    models: [],
+  },
+  {
+    id: 'claude',
+    label: 'Claude API',
+    icon: 'auto_awesome',
+    desc: 'Anthropic API — conversational chat, no local tool access',
+    needsKey: true,
+    models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+  },
+  {
+    id: 'copilot',
+    label: 'GitHub Models',
+    icon: 'code',
+    desc: 'GitHub Copilot / GitHub Models API',
+    needsKey: true,
+    models: ['gpt-4o', 'gpt-4o-mini', 'o3'],
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    icon: 'smart_toy',
+    desc: 'OpenAI API — GPT-4o, o3, etc.',
+    needsKey: true,
+    models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
+  },
+];
+
 export const LANE_ACTIONS = {
   triage: {
     label: 'Improve Issue',

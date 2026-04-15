@@ -10,6 +10,7 @@ import {
   agentsPanelOpenSignal,
   teamsPanelOpenSignal,
   planningPanelOpenSignal,
+  claudeSessionOpenSignal,
   openDrawer,
 } from '../lib/signals.js';
 import { bus, Events } from '../lib/event-bus.js';
@@ -46,6 +47,9 @@ $('teams-btn')?.addEventListener('click', () => {
 });
 $('planning-btn')?.addEventListener('click', () => {
   planningPanelOpenSignal.value = !planningPanelOpenSignal.value;
+});
+$('claude-session-btn')?.addEventListener('click', () => {
+  claudeSessionOpenSignal.value = !claudeSessionOpenSignal.value;
 });
 
 // ── Service health checks ─────────────────────────────────────
