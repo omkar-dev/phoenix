@@ -2,11 +2,13 @@
 Phoenix v5 — Movement recording and AI-based team assignment endpoints.
 """
 
+import asyncio
 import json
 import re
 
 from fastapi import APIRouter, Query
 
+import broadcast as _broadcast
 import db as _db
 from config import ANTHROPIC_API_KEY
 from models import MovementBody, TeamAssignmentRequest, TeamAssignmentResult
@@ -27,6 +29,14 @@ _TEAM_ASSIGN_SYSTEM = (
 @router.post("/movements", status_code=204)
 async def record_movement(body: MovementBody) -> None:
     await _db.log_movement(body.repo, body.issue_number, body.from_column, body.to_column, body.actor)
+    asyncio.create_task(_broadcast.broadcast({
+        "type": "card_moved",
+        "repo": body.repo,
+        "issueNumber": body.issue_number,
+        "fromColumn": body.from_column,
+        "toColumn": body.to_column,
+        "actor": body.actor,
+    }))
 
 
 @router.get("/movements")

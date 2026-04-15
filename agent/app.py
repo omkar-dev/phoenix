@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 import db as _db
 from config import CORS_ORIGINS
-from routes import claude_sessions, movements, notes, refine, repos, runs, worktree
+from routes import claude_sessions, events, movements, notes, refine, repos, runs, worktree
 
 app = FastAPI(title="Phoenix ImplementerAgent", version="5.0.0")
 
@@ -107,3 +107,4 @@ app.include_router(repos.router)
 app.include_router(movements.router)
 app.include_router(notes.router)
 app.include_router(claude_sessions.router)
+app.include_router(events.router)

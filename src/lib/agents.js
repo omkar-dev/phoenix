@@ -18,6 +18,7 @@ const DEFAULT_AGENTS = [
     lanes: ['todo', 'in_progress'],
     actionType: 'implement',
     autonomy: 'assist',
+    superpowersSkills: [],
   },
   {
     id: 'refiner',
@@ -34,6 +35,7 @@ const DEFAULT_AGENTS = [
     lanes: ['triage'],
     actionType: 'refine',
     autonomy: 'assist',
+    superpowersSkills: [],
   },
 ];
 

@@ -1,5 +1,5 @@
 import { initBoard, renderBoard } from '../lib/board.js';
-import { onRunUpdate } from '../lib/implementer.js';
+import { onRunUpdate, connectGlobalEvents } from '../lib/implementer.js';
 import { AGENT_BASE_URL, SEMANTIC_BASE_URL } from '../lib/config.js';
 import { state } from './state.js';
 import { initBoardLoader, showState, loadIssues, getFilters } from './board-loader.js';
@@ -28,6 +28,7 @@ initBoard(state);
 // ── Module init ───────────────────────────────────────────────
 initBoardLoader();
 initTokenRepo();
+connectGlobalEvents(AGENT_BASE_URL);
 
 // ── Run updates → board only (islands auto-update via signals) ─
 onRunUpdate(() => {

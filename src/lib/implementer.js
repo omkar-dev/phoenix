@@ -986,3 +986,92 @@ function _extractCriteria(body) {
   const first = body.trim().slice(0, 200);
   return first ? [first] : ['See issue for details'];
 }
+
+// ── Multiplayer: global SSE broadcast listener ────────────────
+
+const MULTIPLAYER_KEY = 'pnx_multiplayer';
+
+export function isMultiplayerEnabled() {
+  return localStorage.getItem(MULTIPLAYER_KEY) !== 'false';
+}
+
+export function setMultiplayerEnabled(enabled) {
+  localStorage.setItem(MULTIPLAYER_KEY, enabled ? 'true' : 'false');
+}
+
+let _globalEs = null;
+
+/**
+ * Subscribe to the server's global /events SSE stream.
+ * Safe to call multiple times — only opens one connection.
+ * Respects the pnx_multiplayer localStorage flag.
+ */
+export function connectGlobalEvents(endpoint) {
+  if (!isMultiplayerEnabled()) return;
+  if (_globalEs) return;
+  _globalEs = new EventSource(`${endpoint}/events`);
+  _globalEs.onmessage = _handleGlobalEvent;
+}
+
+export function disconnectGlobalEvents() {
+  if (_globalEs) {
+    _globalEs.close();
+    _globalEs = null;
+  }
+}
+
+function _handleGlobalEvent(e) {
+  let msg;
+  try { msg = JSON.parse(e.data); } catch { return; }
+  const { type } = msg;
+
+  if (type === 'ping' || type === 'snapshot') return;
+
+  if (type === 'run_started') {
+    // Another user started a run — show running indicator if we don't own this stream
+    if (!_eventSources.has(msg.issueNumber)) {
+      const cur = runStore.get(msg.issueNumber);
+      if (!cur || cur.status === 'idle' || cur.status === 'done' || cur.status === 'failed') {
+        _set(msg.issueNumber, {
+          status: 'running',
+          step: 'Running…',
+          prUrl: null,
+          worktreePath: null,
+          model: null,
+          cost: null,
+          repoFullName: msg.repo,
+          _remote: true,
+        });
+      }
+    }
+    return;
+  }
+
+  if (type === 'run_updated') {
+    // Skip if we own the live SSE stream for this run
+    if (_eventSources.has(msg.issueNumber)) return;
+    const patches = {
+      complete:    { status: 'done',        step: 'Done',        prUrl: msg.data?.pr_url ?? null,         branch: msg.data?.branch ?? null },
+      interrupted: { status: 'interrupted', step: 'Interrupted', worktreePath: msg.data?.worktree_path ?? null, branch: msg.data?.branch ?? null },
+      error:       { status: 'failed',      step: msg.data?.message ?? 'Failed' },
+    };
+    const patch = patches[msg.eventType];
+    if (patch) {
+      const cur = runStore.get(msg.issueNumber) ?? {};
+      _set(msg.issueNumber, { ...cur, ...patch });
+    }
+    return;
+  }
+
+  if (type === 'run_cancelled') {
+    if (_eventSources.has(msg.issueNumber)) return;
+    const cur = runStore.get(msg.issueNumber);
+    if (cur) _set(msg.issueNumber, { ...cur, status: 'cancelled', step: 'Cancelled' });
+    return;
+  }
+
+  if (type === 'card_moved') {
+    window.dispatchEvent(new CustomEvent('pnx:remote-card-moved', { detail: msg }));
+    return;
+  }
+}

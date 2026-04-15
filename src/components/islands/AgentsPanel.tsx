@@ -15,6 +15,7 @@ import {
 import { PROVIDERS, SAMPLING_PROFILES, PROVIDER_ENDPOINTS } from '../../lib/constants.js';
 import { AGENT_BASE_URL } from '../../lib/config.js';
 import { getGlobalAiKey } from '../../lib/agents.js';
+import { SUPERPOWERS_SKILLS } from '../../lib/superpowers.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ interface AgentForm {
   sampling: string; apiKey: string; llmBaseUrl: string; endpoint: string;
   lanes: string[]; autonomy: string; mcpServers: McpServer[];
   criticEnabled: boolean; criticThreshold: number; criticMaxCycles: number;
+  superpowersSkills: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ const EMPTY_FORM: AgentForm = {
   sampling: 'balanced', apiKey: '', llmBaseUrl: (PROVIDER_ENDPOINTS as any).claude,
   endpoint: AGENT_BASE_URL, lanes: [], autonomy: 'assist', mcpServers: [],
   criticEnabled: false, criticThreshold: 0.75, criticMaxCycles: 2,
+  superpowersSkills: [],
 };
 
 const TEMPLATES = [
@@ -106,6 +109,7 @@ export default function AgentsPanel() {
         criticEnabled: agent.criticEnabled ?? false,
         criticThreshold: agent.criticThreshold ?? 0.75,
         criticMaxCycles: agent.criticMaxCycles ?? 2,
+        superpowersSkills: agent.superpowersSkills ?? [],
       });
     } else {
       setForm({ ...EMPTY_FORM, id: '' });
@@ -132,6 +136,7 @@ export default function AgentsPanel() {
       criticEnabled: form.criticEnabled,
       criticThreshold: form.criticThreshold,
       criticMaxCycles: form.criticMaxCycles,
+      superpowersSkills: form.superpowersSkills,
     });
     setShowForm(false);
   }
@@ -643,6 +648,36 @@ function Step2({ form, patchForm, mcpFormOpen, setMcpFormOpen, mcpDraft, setMcpD
         </div>
       </div>
 
+      {/* Superpowers Skills */}
+      <div>
+        <FieldLabel>Superpowers Skills</FieldLabel>
+        <p class="text-[10px] text-on-surface-variant mb-2">
+          Selected skills are appended to the system prompt at run time.
+        </p>
+        <div class="space-y-1.5">
+          {SUPERPOWERS_SKILLS.map(skill => {
+            const checked = form.superpowersSkills.includes(skill.id);
+            return (
+              <label key={skill.id}
+                     style={`display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;border:1.5px solid;cursor:pointer;transition:all 0.15s;${checked ? 'border-color:#003d9b;background:#eef2ff' : 'border-color:rgba(195,198,214,0.4);background:#f9f9fb'}`}>
+                <input type="checkbox" checked={checked}
+                       onChange={() => {
+                         const next = checked
+                           ? form.superpowersSkills.filter((id: string) => id !== skill.id)
+                           : [...form.superpowersSkills, skill.id];
+                         patchForm({ superpowersSkills: next });
+                       }}
+                       style="margin-top:1px;accent-color:#003d9b;flex-shrink:0" />
+                <div>
+                  <span style="font-size:11px;font-weight:600;color:#111827">{skill.label}</span>
+                  <span style="font-size:10px;color:#6b7280;display:block;margin-top:1px">{skill.description}</span>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
       <div>
         <div class="flex items-center justify-between mb-1.5">
           <FieldLabel>System Prompt</FieldLabel>
@@ -974,6 +1009,9 @@ function Step5({ form }: { form: AgentForm }) {
     ['Always',    form.guardrailsAlways || '(none)'],
     ['Never',     form.guardrailsNever || '(none)'],
     ['Critic',    form.criticEnabled ? `Enabled · ${Math.round(form.criticThreshold * 100)}% threshold · ${form.criticMaxCycles} cycles` : 'Disabled'],
+    ['Superpowers', form.superpowersSkills.length > 0
+      ? SUPERPOWERS_SKILLS.filter(s => form.superpowersSkills.includes(s.id)).map(s => s.label).join(', ')
+      : '(none)'],
   ];
   return (
     <div class="space-y-3">

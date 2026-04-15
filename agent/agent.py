@@ -139,6 +139,20 @@ class ImplementerAgent:
         except RuntimeError:
             # Event loop may be closing during shutdown — safe to ignore
             pass
+        # Broadcast terminal state changes to all multiplayer clients
+        if type_ in ("complete", "interrupted", "error"):
+            try:
+                import broadcast as _broadcast
+                asyncio.create_task(_broadcast.broadcast({
+                    "type": "run_updated",
+                    "runId": self.run_id,
+                    "issueNumber": self.request.issue_number,
+                    "repo": self.request.repo_full_name,
+                    "eventType": type_,
+                    "data": data,
+                }))
+            except RuntimeError:
+                pass
 
     async def events(self) -> AsyncIterator[RunEvent]:
         """Yield events; send a keepalive ping when idle for 15 s."""

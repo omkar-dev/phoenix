@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from github import Github
 
+import broadcast as _broadcast
 import db as _db
 from agent import ImplementerAgent
 from config import GITHUB_TOKEN
@@ -39,6 +40,12 @@ async def create_run(request: RunRequest) -> dict:
     task = asyncio.create_task(agent.run(), name=f"run-{run_id[:8]}")
     _runs[run_id] = RunState(run_id=run_id, agent=agent, task=task)
     task.add_done_callback(lambda t: _on_task_done(run_id, t))
+    asyncio.create_task(_broadcast.broadcast({
+        "type": "run_started",
+        "runId": run_id,
+        "issueNumber": request.issue_number,
+        "repo": request.repo_full_name,
+    }))
     return {"run_id": run_id, "stream_url": f"/runs/{run_id}/stream"}
 
 
@@ -102,7 +109,15 @@ async def cancel_run(run_id: str) -> dict:
     state = _runs.pop(run_id, None)
     if not state:
         raise HTTPException(status_code=404, detail="Run not found")
+    _cancelled_issue = state.agent.request.issue_number
+    _cancelled_repo = state.agent.request.repo_full_name
     state.task.cancel()
+    asyncio.create_task(_broadcast.broadcast({
+        "type": "run_cancelled",
+        "runId": run_id,
+        "issueNumber": _cancelled_issue,
+        "repo": _cancelled_repo,
+    }))
 
     async def _cleanup_after_cancel(task: asyncio.Task, agent: ImplementerAgent) -> None:
         try:

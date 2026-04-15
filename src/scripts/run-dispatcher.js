@@ -19,6 +19,7 @@ import {
   getInterruptedState,
 } from '../lib/implementer.js';
 import { getAgents, getTeams, getIssueTeam, getGlobalAiKey, getAgentMaxIterations } from '../lib/agents.js';
+import { composeSuperpowersPrompt } from '../lib/superpowers.js';
 import { moveCard } from '../lib/board.js';
 import { getFilters } from './board-loader.js';
 import { state } from './state.js';
@@ -43,7 +44,12 @@ function _agentConfig(agent, team = null) {
     llmApiKey: agent.apiKey || getGlobalAiKey() || undefined,
     llmBaseUrl: agent.llmBaseUrl || undefined,
     fallbackLlmModel: _prefixModel(agent.fallbackProvider, agent.fallbackModel),
-    systemPrompt: agent.systemPrompt || undefined,
+    systemPrompt: (() => {
+      const base = agent.systemPrompt || '';
+      const skills = composeSuperpowersPrompt(agent.superpowersSkills);
+      const combined = (base + skills).trim();
+      return combined || undefined;
+    })(),
     purpose: agent.purpose || undefined,
     reasoningPattern: agent.reasoningPattern || undefined,
     guardrailsAlways: agent.guardrailsAlways || undefined,

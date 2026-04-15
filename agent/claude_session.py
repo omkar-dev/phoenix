@@ -225,7 +225,16 @@ class ClaudeSessionManager:
 
     async def _invoke_cli(self, session_id: str, session: dict, message: str) -> None:
         """Spawn a `claude` subprocess for one turn and stream its stream-json output."""
-        worktree_path = session.get("worktree_path") or session["project_path"]
+        raw_worktree = session.get("worktree_path")
+        if raw_worktree and Path(raw_worktree).exists():
+            worktree_path = raw_worktree
+        elif session.get("project_path") and Path(session["project_path"]).exists():
+            worktree_path = session["project_path"]
+        else:
+            # project_path doesn't exist on this machine — use a stable temp dir
+            fallback = Path(tempfile.gettempdir()) / f"pnx-session-cwd-{session_id[:8]}"
+            fallback.mkdir(parents=True, exist_ok=True)
+            worktree_path = str(fallback)
         claude_session_id = session.get("claude_session_id")
 
         # -p / --print enables non-interactive mode; --output-format only works with -p.

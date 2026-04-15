@@ -691,6 +691,21 @@ export function initBoardLoader() {
     renderBoard(getFilters);
   });
 
+  // ── Remote card move (multiplayer sync) ──────────────────────
+  window.addEventListener('pnx:remote-card-moved', (e) => {
+    const { issueNumber, toColumn, repo } = e.detail;
+    if (repo !== state.repoFullName) return;      // different repo — ignore
+    if (isRecentlyMoved(issueNumber)) return;     // we just moved it — skip echo
+    const issue = state.allIssues.find((i) => i.number === issueNumber);
+    if (!issue || !state.columns[toColumn]) return;
+    // Optimistically move the card to the new column and re-render
+    Object.keys(state.columns).forEach((col) => {
+      state.columns[col] = state.columns[col].filter((i) => i.number !== issueNumber);
+    });
+    state.columns[toColumn].unshift(issue);
+    renderBoard(getFilters);
+  });
+
   // ── Fork source toggle ────────────────────────────────────────
   document.querySelectorAll('.fork-source-btn').forEach((btn) => {
     btn.addEventListener('click', () => {

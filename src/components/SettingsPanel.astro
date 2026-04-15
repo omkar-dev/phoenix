@@ -80,6 +80,13 @@
         <span class="material-symbols-outlined" style="font-size:16px">history</span>
         History
       </button>
+      <button
+        data-settings-nav="multiplayer"
+        class="settings-nav flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold w-full text-left transition-all"
+      >
+        <span class="material-symbols-outlined" style="font-size:16px">group</span>
+        Multiplayer
+      </button>
     </aside>
 
     <!-- Main content -->
@@ -442,6 +449,49 @@
             Cleared successfully.
           </p>
         </section>
+
+        <!-- ══ Multiplayer ══ -->
+        <section id="settings-section-multiplayer" class="hidden">
+          <div class="mb-5">
+            <h2
+              class="text-lg font-bold tracking-tight"
+              style="color:#191c1e;font-family:'Manrope',sans-serif"
+            >
+              Multiplayer
+            </h2>
+            <p class="text-[12px] mt-0.5 max-w-md leading-relaxed" style="color:#6b6f80">
+              Sync board state across all connected browsers in real time — run statuses and card moves update instantly for everyone.
+            </p>
+          </div>
+
+          <div
+            class="bg-surface-container-lowest rounded-xl p-5 space-y-4"
+            style="border:1.5px solid rgba(195,198,214,0.4)"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-[13px] font-semibold text-on-surface">Enable multiplayer sync</p>
+                <p class="text-[11px] mt-0.5 leading-relaxed" style="color:#6b6f80">
+                  When enabled, run start/completion and card movements are broadcast to all browsers connected to the same agent server. Requires a page reload to take effect.
+                </p>
+              </div>
+              <!-- Toggle switch -->
+              <button
+                id="multiplayer-toggle"
+                role="switch"
+                aria-checked="true"
+                class="relative shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
+                style="background:#003d9b"
+              >
+                <span
+                  id="multiplayer-toggle-thumb"
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
+                  style="transform:translateX(20px)"
+                ></span>
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   </div>
@@ -464,8 +514,9 @@
 <script>
   import { CODE_EDITORS, TERMINAL_MODES } from '../lib/constants.js';
   import { getCodeEditor, setCodeEditor, getCustomEditorCmd, setCustomEditorCmd, getGlobalAiKey, setGlobalAiKey, getGlobalAiProvider, setGlobalAiProvider, getTerminalConfig, setTerminalConfig } from '../lib/agents.js';
-  import { clearHistory } from '../lib/implementer.js';
+  import { clearHistory, isMultiplayerEnabled, setMultiplayerEnabled, connectGlobalEvents, disconnectGlobalEvents } from '../lib/implementer.js';
   import { clearCardLanes } from '../lib/board.js';
+  import { AGENT_BASE_URL } from '../lib/config.js';
 
   const AI_PROVIDERS = [
     { id: 'claude', label: 'Claude', icon: 'auto_awesome' },
@@ -670,8 +721,37 @@
     });
   }
 
+  // ── Multiplayer section ───────────────────────────────────────
+  function _applyToggleUI(enabled: boolean) {
+    const btn = document.getElementById('multiplayer-toggle');
+    const thumb = document.getElementById('multiplayer-toggle-thumb');
+    if (!btn || !thumb) return;
+    btn.setAttribute('aria-checked', String(enabled));
+    btn.style.background = enabled ? '#003d9b' : '#d1d5db';
+    thumb.style.transform = enabled ? 'translateX(20px)' : 'translateX(0px)';
+  }
+
+  function initMultiplayerSection() {
+    const enabled = isMultiplayerEnabled();
+    _applyToggleUI(enabled);
+
+    const toggleBtn = document.getElementById('multiplayer-toggle');
+    if (toggleBtn) {
+      (toggleBtn as HTMLButtonElement).onclick = () => {
+        const next = !isMultiplayerEnabled();
+        setMultiplayerEnabled(next);
+        _applyToggleUI(next);
+        if (next) {
+          connectGlobalEvents(AGENT_BASE_URL);
+        } else {
+          disconnectGlobalEvents();
+        }
+      };
+    }
+  }
+
   // ── Nav switching ─────────────────────────────────────────────
-  const SECTIONS = ['editor', 'ai', 'github', 'terminal', 'history'];
+  const SECTIONS = ['editor', 'ai', 'github', 'terminal', 'history', 'multiplayer'];
 
   function showSection(name: string) {
     document.querySelectorAll('[data-settings-nav]').forEach((btn) => {
@@ -724,6 +804,7 @@
     initAiSection();
     initGithubSection();
     initTerminalSection();
+    initMultiplayerSection();
     const section = (e as CustomEvent).detail?.section ?? 'editor';
     showSection(section);
     panel?.classList.remove('hidden');
