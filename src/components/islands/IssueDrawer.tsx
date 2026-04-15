@@ -1065,8 +1065,7 @@ function DetailsTab({ issue }: { issue: Issue }) {
         </div>
       )}
 
-      {/* Title */}
-      <div
+        onClick={() => { if (!editingTitle && !titleSaving) { setTitleError(null); setEditingTitle(true); } }}
         class="group relative cursor-text rounded-lg px-2 py-1.5 -mx-2 transition-colors hover:bg-[#edeef0]"
         onClick={() => !editingTitle && !titleSaving && setEditingTitle(true)}
       >
