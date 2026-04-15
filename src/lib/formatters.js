@@ -39,8 +39,7 @@ export function priorityIcon(p) {
 /**
  * Format an estimated USD cost value for display.
  * @param {number} usd
- * @returns {string} e.g. "< $0.001", "$0.0234", "$0.12", "$1.50"
- */
+ * @returns {string} e.g. "< $0.001", "$0.0023", "$0.12", "$1.50"
 export function formatCost(usd) {
   if (!usd || usd <= 0) return '';
   if (usd < 0.001) return '< $0.001';
