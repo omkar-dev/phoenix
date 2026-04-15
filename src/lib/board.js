@@ -90,7 +90,6 @@ function _columnToProjectStatusName(col, statusOptions) {
 
 async function _syncStatusToGitHub(num, toCol) {
   if (!_state.repoFullName) return;
-  if (!localStorage.getItem('gh_token')) return; // no token → silently skip
 
   const issue = _state.allIssues.find((i) => i.number === num);
   if (!issue || issue._local) return;

@@ -1,17 +1,19 @@
+import { AGENT_BASE_URL } from './config.js';
+
+const _GITHUB_BASE = `${AGENT_BASE_URL}/github`;
+
 let _currentUser = null;
 
 /**
- * Fetch the authenticated GitHub user. Result is cached for the lifetime of
- * the page so repeated calls (e.g. on every card move) are free.
- * Returns null when no token is stored or the request fails.
+ * Fetch the authenticated GitHub user via the backend proxy.
+ * Result is cached for the lifetime of the page.
+ * Returns null if the backend has no token or the request fails.
  * @returns {Promise<{login:string, avatar_url:string, id:number}|null>}
  */
 export async function fetchCurrentUser() {
   if (_currentUser) return _currentUser;
-  const token = localStorage.getItem('gh_token');
-  if (!token) return null;
   try {
-    const res = await fetch('https://api.github.com/user', { headers: buildHeaders(token) });
+    const res = await fetch(`${_GITHUB_BASE}/user`);
     if (!res.ok) return null;
     _currentUser = await res.json();
     return _currentUser;
@@ -20,20 +22,17 @@ export async function fetchCurrentUser() {
   }
 }
 
-function buildHeaders(token) {
+function buildHeaders() {
   return {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
 async function graphqlRequest(query, variables) {
-  const token = localStorage.getItem('gh_token');
-  if (!token) return null;
-  const res = await fetch('https://api.github.com/graphql', {
+  const res = await fetch(`${_GITHUB_BASE}/graphql`, {
     method: 'POST',
-    headers: { ...buildHeaders(token), 'Content-Type': 'application/json' },
+    headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, variables }),
   });
   if (!res.ok) throw await parseGitHubError(res);
@@ -89,13 +88,10 @@ const _PROJECT_STATUS_QUERY = `
 
 /**
  * Fetch GitHub Projects v2 status for all issues in a repo.
- * Returns null if no token, no project, or on error (silently degrades).
+ * Returns null if no project found or on error (silently degrades).
  * Returns { itemsByIssueNumber, projectId, statusFieldId, statusOptions }.
  */
 export async function fetchProjectStatuses(repo) {
-  const token = localStorage.getItem('gh_token');
-  if (!token) return null;
-
   const [owner, name] = repo.split('/');
   let data;
   try {
@@ -180,7 +176,7 @@ async function parseGitHubError(res) {
 
   if (res.status === 401 || normalizedMessage.includes('bad credentials')) {
     err.userMessage =
-      'The saved GitHub token is invalid or expired. Clear it and add a fresh token.';
+      'GitHub authentication failed. Ensure GITHUB_TOKEN is set correctly on the backend.';
     return err;
   }
 
@@ -190,20 +186,20 @@ async function parseGitHubError(res) {
       ? resetTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : null;
     err.userMessage = resetLabel
-      ? `GitHub API rate limit reached. Try again after ${resetLabel} or add a token.`
-      : 'GitHub API rate limit reached. Add a token or try again later.';
+      ? `GitHub API rate limit reached. Try again after ${resetLabel}.`
+      : 'GitHub API rate limit reached. Try again later.';
     return err;
   }
 
   if (normalizedMessage.includes('resource not accessible by personal access token')) {
     err.userMessage =
-      'Your token does not have access to this repository. Use a token with repository access or clear it for public repos.';
+      'The backend token does not have access to this repository. Check the GITHUB_TOKEN scopes.';
     return err;
   }
 
   if (normalizedMessage.includes('saml') || normalizedMessage.includes('single sign-on')) {
     err.userMessage =
-      'This token needs organization SSO authorization before it can access the repository.';
+      'The backend token needs organization SSO authorization before it can access the repository.';
     return err;
   }
 
@@ -216,57 +212,39 @@ async function parseGitHubError(res) {
   return err;
 }
 
-async function fetchIssuesPage(repo, page, token, attempt = 0) {
-  const url = `https://api.github.com/repos/${repo}/issues?state=open&per_page=100&page=${page}`;
+async function fetchIssuesPage(repo, page, attempt = 0) {
+  const url = `${_GITHUB_BASE}/repos/${repo}/issues?state=open&per_page=100&page=${page}`;
   let res;
   try {
-    res = await fetch(url, { headers: buildHeaders(token) });
+    res = await fetch(url, { headers: buildHeaders() });
   } catch (networkErr) {
     // Transient network failure — retry up to 2 times with backoff
     if (attempt < 2) {
       await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-      return fetchIssuesPage(repo, page, token, attempt + 1);
+      return fetchIssuesPage(repo, page, attempt + 1);
     }
     throw networkErr;
   }
 
   if (res.ok) {
-    return { data: await res.json(), token };
+    return await res.json();
   }
 
   // Retry on 5xx server errors (up to 2 retries)
   if (res.status >= 500 && attempt < 2) {
     await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
-    return fetchIssuesPage(repo, page, token, attempt + 1);
+    return fetchIssuesPage(repo, page, attempt + 1);
   }
 
-  const originalError = await parseGitHubError(res);
-
-  // If token fails, try without it (public repos)
-  if (
-    (res.status === 401 ||
-      (res.status === 403 && res.headers.get('x-ratelimit-remaining') !== '0')) &&
-    token
-  ) {
-    const fallbackRes = await fetch(url, { headers: buildHeaders(null) });
-    if (fallbackRes.ok) {
-      return { data: await fallbackRes.json(), token: null };
-    }
-  }
-
-  throw originalError;
+  throw await parseGitHubError(res);
 }
 
 export async function fetchAllIssues(repo) {
-  let token = localStorage.getItem('gh_token');
   let issues = [];
   let page = 1;
 
   while (true) {
-    const result = await fetchIssuesPage(repo, page, token);
-    token = result.token;
-
-    const data = result.data;
+    const data = await fetchIssuesPage(repo, page);
     issues = issues.concat(data.filter((issue) => !issue.pull_request));
 
     if (data.length < 100 || page >= 10) break;
@@ -282,28 +260,24 @@ export async function fetchAllIssues(repo) {
  * Throws a parsed error if the request fails.
  */
 export async function fetchRepoInfo(repo) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}`;
-  const res = await fetch(url, { headers: buildHeaders(token) });
+  const url = `${_GITHUB_BASE}/repos/${repo}`;
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) throw await parseGitHubError(res);
   return res.json();
 }
 
 export async function fetchUserRepos() {
-  const token = localStorage.getItem('gh_token');
-  if (!token) return [];
   const res = await fetch(
-    'https://api.github.com/user/repos?sort=updated&per_page=100&affiliation=owner,collaborator,organization_member',
-    { headers: buildHeaders(token) }
+    `${_GITHUB_BASE}/user/repos?sort=updated&per_page=100&affiliation=owner,collaborator,organization_member`,
+    { headers: buildHeaders() }
   );
   if (!res.ok) throw await parseGitHubError(res);
   return res.json();
 }
 
 export async function searchPublicRepos(query) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&per_page=8`;
-  const res = await fetch(url, { headers: buildHeaders(token) });
+  const url = `${_GITHUB_BASE}/search/repositories?q=${encodeURIComponent(query)}&sort=stars&per_page=8`;
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) throw await parseGitHubError(res);
   const data = await res.json();
   return data.items;
@@ -314,15 +288,14 @@ export async function searchPublicRepos(query) {
  * Throws a parsed error if the request fails.
  */
 export async function createIssue(repo, { title, body, labels }) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/issues`;
+  const url = `${_GITHUB_BASE}/repos/${repo}/issues`;
   const payload = { title };
   if (body) payload.body = body;
   if (labels) payload.labels = labels;
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { ...buildHeaders(token), 'Content-Type': 'application/json' },
+    headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 
@@ -335,14 +308,13 @@ export async function createIssue(repo, { title, body, labels }) {
  * Falls back to repo collaborators if the org endpoint returns 404 (user-owned repos).
  */
 export async function fetchOrgMembers(org, repoFallback) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/orgs/${org}/members?per_page=100`;
-  const res = await fetch(url, { headers: buildHeaders(token) });
+  const url = `${_GITHUB_BASE}/orgs/${org}/members?per_page=100`;
+  const res = await fetch(url, { headers: buildHeaders() });
   if (res.ok) return res.json();
   // 404 = personal account (not an org) — fall back to repo collaborators
   if (res.status === 404 && repoFallback) {
-    const fallbackUrl = `https://api.github.com/repos/${repoFallback}/collaborators?per_page=100`;
-    const fallbackRes = await fetch(fallbackUrl, { headers: buildHeaders(token) });
+    const fallbackUrl = `${_GITHUB_BASE}/repos/${repoFallback}/collaborators?per_page=100`;
+    const fallbackRes = await fetch(fallbackUrl, { headers: buildHeaders() });
     if (fallbackRes.ok) return fallbackRes.json();
   }
   throw await parseGitHubError(res);
@@ -353,9 +325,8 @@ export async function fetchOrgMembers(org, repoFallback) {
  * Throws a parsed error if the request fails.
  */
 export async function fetchIssueComments(repo, issueNumber) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments?per_page=100`;
-  const res = await fetch(url, { headers: buildHeaders(token) });
+  const url = `${_GITHUB_BASE}/repos/${repo}/issues/${issueNumber}/comments?per_page=100`;
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) throw await parseGitHubError(res);
   return res.json();
 }
@@ -365,11 +336,10 @@ export async function fetchIssueComments(repo, issueNumber) {
  * Throws a parsed error if the request fails.
  */
 export async function createIssueComment(repo, issueNumber, body) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`;
+  const url = `${_GITHUB_BASE}/repos/${repo}/issues/${issueNumber}/comments`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { ...buildHeaders(token), 'Content-Type': 'application/json' },
+    headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ body }),
   });
   if (!res.ok) throw await parseGitHubError(res);
@@ -381,9 +351,8 @@ export async function createIssueComment(repo, issueNumber, body) {
  * Throws a parsed error if the request fails.
  */
 export async function fetchRepoCollaborators(repo) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/collaborators?per_page=100`;
-  const res = await fetch(url, { headers: buildHeaders(token) });
+  const url = `${_GITHUB_BASE}/repos/${repo}/collaborators?per_page=100`;
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) throw await parseGitHubError(res);
   return res.json();
 }
@@ -393,11 +362,10 @@ export async function fetchRepoCollaborators(repo) {
  * Throws a parsed error if the request fails.
  */
 export async function createRepoLabel(repo, { name, color }) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/labels`;
+  const url = `${_GITHUB_BASE}/repos/${repo}/labels`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { ...buildHeaders(token), 'Content-Type': 'application/json' },
+    headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, color }),
   });
   if (!res.ok) throw await parseGitHubError(res);
@@ -409,9 +377,8 @@ export async function createRepoLabel(repo, { name, color }) {
  * Throws a parsed error if the request fails.
  */
 export async function fetchRepoLabels(repo) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/labels?per_page=100`;
-  const res = await fetch(url, { headers: buildHeaders(token) });
+  const url = `${_GITHUB_BASE}/repos/${repo}/labels?per_page=100`;
+  const res = await fetch(url, { headers: buildHeaders() });
   if (!res.ok) throw await parseGitHubError(res);
   return res.json();
 }
@@ -421,11 +388,10 @@ export async function fetchRepoLabels(repo) {
  * Silently succeeds when the label already exists (GitHub returns 422).
  */
 export async function ensureRepoLabel(repo, { name, color }) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/labels`;
+  const url = `${_GITHUB_BASE}/repos/${repo}/labels`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { ...buildHeaders(token), 'Content-Type': 'application/json' },
+    headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, color }),
   });
   // 422 = label already exists — that's fine
@@ -443,9 +409,6 @@ export async function ensureRepoLabel(repo, { name, color }) {
  * @returns {Promise<Array<{isResolved:boolean, comments:Array<{body:string, path:string|null, author:{login:string}|null}>}>>}
  */
 export async function fetchPRReviewThreads(repo, prNumber) {
-  const token = localStorage.getItem('gh_token');
-  if (!token) return { threads: [], headRefName: null };
-
   const [owner, name] = repo.split('/');
   const query = `
     query($owner: String!, $name: String!, $number: Int!) {
@@ -493,11 +456,9 @@ export async function fetchPRReviewThreads(repo, prNumber) {
  * Returns true if mergeable === false, false if clean, null if GitHub hasn't computed it yet.
  */
 export async function fetchPRMergeable(repo, prNumber) {
-  const token = localStorage.getItem('gh_token');
-  if (!token) return null;
   try {
-    const res = await fetch(`https://api.github.com/repos/${repo}/pulls/${prNumber}`, {
-      headers: buildHeaders(token),
+    const res = await fetch(`${_GITHUB_BASE}/repos/${repo}/pulls/${prNumber}`, {
+      headers: buildHeaders(),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -513,8 +474,7 @@ export async function fetchPRMergeable(repo, prNumber) {
  * Throws a parsed error if the request fails.
  */
 export async function updateIssue(repo, issueNumber, { title, body, assignees, labels }) {
-  const token = localStorage.getItem('gh_token');
-  const url = `https://api.github.com/repos/${repo}/issues/${issueNumber}`;
+  const url = `${_GITHUB_BASE}/repos/${repo}/issues/${issueNumber}`;
   const payload = {};
   if (title !== undefined) payload.title = title;
   if (body !== undefined) payload.body = body;
@@ -523,7 +483,7 @@ export async function updateIssue(repo, issueNumber, { title, body, assignees, l
 
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: { ...buildHeaders(token), 'Content-Type': 'application/json' },
+    headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 

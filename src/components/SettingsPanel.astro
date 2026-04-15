@@ -60,13 +60,6 @@
         AI
       </button>
       <button
-        data-settings-nav="github"
-        class="settings-nav flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold w-full text-left transition-all"
-      >
-        <span class="material-symbols-outlined" style="font-size:16px">key</span>
-        GitHub
-      </button>
-      <button
         data-settings-nav="history"
         class="settings-nav flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold w-full text-left transition-all"
       >
@@ -220,69 +213,6 @@
               </div>
               <p id="ai-key-saved-msg" class="text-[11px] mt-2 hidden" style="color:#1a7a4a">
                 Saved.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <!-- ══ GitHub ══ -->
-        <section id="settings-section-github" class="hidden">
-          <div class="mb-5">
-            <h2
-              class="text-lg font-bold tracking-tight"
-              style="color:#191c1e;font-family:'Manrope',sans-serif"
-            >
-              GitHub
-            </h2>
-            <p class="text-[12px] mt-0.5 max-w-md leading-relaxed" style="color:#6b6f80">
-              Personal Access Token with <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px">repo</code> scope. Stored locally in your browser.
-            </p>
-          </div>
-
-          <div
-            class="bg-surface-container-lowest rounded-xl p-5 space-y-4"
-            style="border:1.5px solid rgba(195,198,214,0.4)"
-          >
-            <div>
-              <p class="text-[12px] font-semibold mb-2" style="color:#434654">Token</p>
-              <div class="flex gap-2">
-                <div class="relative flex-1">
-                  <input
-                    id="gh-token-input"
-                    type="password"
-                    placeholder="ghp_…"
-                    autocomplete="off"
-                    class="w-full text-[12px] px-3 py-2.5 rounded-lg font-mono"
-                    style="border:1.5px solid rgba(195,198,214,0.5);background:#f9f9fb;color:#191c1e;outline:none"
-                  />
-                  <button
-                    id="gh-token-toggle"
-                    class="absolute right-2.5 top-1/2 -translate-y-1/2"
-                    style="color:#9ca3af"
-                  >
-                    <span class="material-symbols-outlined" style="font-size:16px">visibility</span>
-                  </button>
-                </div>
-                <button
-                  id="gh-token-save"
-                  class="flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-2 rounded-lg transition-all active:scale-95 shrink-0"
-                  style="background:#003d9b;color:#fff"
-                >
-                  Save
-                </button>
-                <button
-                  id="gh-token-clear"
-                  class="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-lg transition-all active:scale-95 shrink-0"
-                  style="background:#fef2f2;color:#ba1a1a;border:1px solid #fca5a5"
-                >
-                  Clear
-                </button>
-              </div>
-              <p id="gh-token-saved-msg" class="text-[11px] mt-2 hidden" style="color:#1a7a4a">
-                Saved.
-              </p>
-              <p id="gh-token-cleared-msg" class="text-[11px] mt-2 hidden" style="color:#6b6f80">
-                Token cleared.
               </p>
             </div>
           </div>
@@ -479,38 +409,8 @@
     });
   }
 
-  // ── GitHub token section ──────────────────────────────────────
-  function initGithubSection() {
-    const input = document.getElementById('gh-token-input') as HTMLInputElement;
-    if (input) input.value = localStorage.getItem('gh_token') || '';
-
-    document.getElementById('gh-token-toggle')?.addEventListener('click', () => {
-      input.type = input.type === 'password' ? 'text' : 'password';
-      const icon = document.querySelector('#gh-token-toggle .material-symbols-outlined');
-      if (icon) icon.textContent = input.type === 'password' ? 'visibility' : 'visibility_off';
-    });
-
-    document.getElementById('gh-token-save')?.addEventListener('click', () => {
-      const val = input.value.trim();
-      if (val) localStorage.setItem('gh_token', val);
-      const msg = document.getElementById('gh-token-saved-msg');
-      if (!msg) return;
-      msg.classList.remove('hidden');
-      setTimeout(() => msg.classList.add('hidden'), 2000);
-    });
-
-    document.getElementById('gh-token-clear')?.addEventListener('click', () => {
-      localStorage.removeItem('gh_token');
-      input.value = '';
-      const msg = document.getElementById('gh-token-cleared-msg');
-      if (!msg) return;
-      msg.classList.remove('hidden');
-      setTimeout(() => msg.classList.add('hidden'), 2000);
-    });
-  }
-
   // ── Nav switching ─────────────────────────────────────────────
-  const SECTIONS = ['editor', 'ai', 'github', 'history'];
+  const SECTIONS = ['editor', 'ai', 'history'];
 
   function showSection(name: string) {
     document.querySelectorAll('[data-settings-nav]').forEach((btn) => {
@@ -561,7 +461,6 @@
     renderEditorGrid();
     initCustomCmdSection();
     initAiSection();
-    initGithubSection();
     showSection('editor');
     panel?.classList.remove('hidden');
     panel?.classList.add('flex');

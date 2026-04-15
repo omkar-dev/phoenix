@@ -10,7 +10,7 @@ const repoSwitcherSep = $('repo-switcher-sep');
 
 // ── Repo panel state ─────────────────────────────────────────
 function showRepoPanel(s) {
-  ['repo-no-token', 'repo-loading', 'repo-list-wrap', 'repo-fetch-error'].forEach((id) =>
+  ['repo-loading', 'repo-list-wrap', 'repo-fetch-error'].forEach((id) =>
     $(id).classList.add('hidden')
   );
   if (s) $(s).classList.remove('hidden');
@@ -88,50 +88,11 @@ function populateRepoSwitcher(repos) {
 }
 
 function initRepoPanel() {
-  const token = localStorage.getItem('gh_token');
-  if (!token) {
-    showRepoPanel('repo-no-token');
-  } else {
-    loadUserRepos();
-  }
-}
-
-function showTokenStatus(msg, color) {
-  const el = $('token-status');
-  el.textContent = msg;
-  el.style.color = color;
-  el.classList.remove('hidden');
-  setTimeout(() => el.classList.add('hidden'), 2000);
+  loadUserRepos();
 }
 
 // ── Init ─────────────────────────────────────────────────────
 export function initTokenRepo() {
-  // Token modal
-  $('token-btn').addEventListener('click', () => {
-    $('token-input').value = localStorage.getItem('gh_token') || '';
-    $('token-modal').classList.remove('hidden');
-  });
-  $('token-modal-close').addEventListener('click', () => $('token-modal').classList.add('hidden'));
-  $('token-modal').addEventListener('click', (e) => {
-    if (e.target === $('token-modal')) $('token-modal').classList.add('hidden');
-  });
-  $('token-save').addEventListener('click', () => {
-    const val = $('token-input').value.trim();
-    if (val) {
-      localStorage.setItem('gh_token', val);
-      loadUserRepos();
-      showTokenStatus('Token saved ✓', '#1a7a4a');
-      setTimeout(() => $('token-modal').classList.add('hidden'), 700);
-    }
-  });
-  $('token-clear').addEventListener('click', () => {
-    localStorage.removeItem('gh_token');
-    $('token-input').value = '';
-    showTokenStatus('Cleared', '#ba1a1a');
-    showRepoPanel('repo-no-token');
-    repoSwitcherSelect.classList.add('hidden');
-    repoSwitcherSep.classList.add('hidden');
-  });
 
   // Repo list click (event delegation)
   $('repo-list').addEventListener('click', (e) => {
@@ -214,12 +175,6 @@ export function initTokenRepo() {
 
   // Retry button
   $('repo-retry-btn').addEventListener('click', loadUserRepos);
-
-  // "Set Token" shortcut in sidebar
-  $('repo-set-token-btn').addEventListener('click', () => {
-    $('token-input').value = localStorage.getItem('gh_token') || '';
-    $('token-modal').classList.remove('hidden');
-  });
 
   initRepoPanel();
 }
