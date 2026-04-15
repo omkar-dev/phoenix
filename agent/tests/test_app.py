@@ -1,6 +1,8 @@
 """Smoke tests for the FastAPI app — health endpoint and basic routing."""
 
+import asyncio
 import os
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -11,7 +13,8 @@ os.environ.setdefault("GITHUB_TOKEN", "test-token")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 import db
-from app import app
+from app import _on_shutdown, app
+from registry import RunState, _runs
 
 
 @pytest.fixture(autouse=True)
@@ -109,3 +112,77 @@ async def test_movements_log_without_actor_is_null(client):
     assert resp.status_code == 204
     data = resp.json()
     assert data[0]["actor"] is None
+
+
+# ── Graceful shutdown ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def cleanup_runs():
+    """Remove any test entries from the shared run registry after each test."""
+    yield
+    _runs.clear()
+
+
+async def test_shutdown_cancels_active_tasks():
+    """_on_shutdown cancels in-flight tasks and empties the run registry.
+
+    MagicMock is used for the agent stub because creating a real ImplementerAgent
+    would require live GitHub/OpenHands credentials and a real git repository.
+    The shutdown handler only calls agent._cleanup_worktree(), so a stub is the
+    minimal interface we need to verify coordination without I/O side-effects.
+    """
+    agent = MagicMock()
+    agent._cleanup_worktree = AsyncMock()
+
+    async def _never_finish():
+        await asyncio.sleep(1000)
+
+    task = asyncio.create_task(_never_finish())
+    _runs["shutdown-test"] = RunState(run_id="shutdown-test", agent=agent, task=task)
+
+    await _on_shutdown()
+
+    assert "shutdown-test" not in _runs
+    assert task.cancelled()
+    agent._cleanup_worktree.assert_awaited_once()
+
+
+async def test_shutdown_noop_when_no_active_runs():
+    """_on_shutdown exits immediately when there are no active runs."""
+    assert not _runs
+    await _on_shutdown()  # must not raise
+
+
+async def test_shutdown_clears_refine_queues():
+    """_on_shutdown clears the refine SSE queue map."""
+    from routes.refine import _refine_queues
+
+    _refine_queues["test-refine-id"] = asyncio.Queue()
+    await _on_shutdown()
+    assert not _refine_queues
+
+
+async def test_cancel_run_schedules_worktree_cleanup(client):
+    """DELETE /runs/{run_id} cancels the task and schedules worktree cleanup.
+
+    MagicMock is used for the same reason as in test_shutdown_cancels_active_tasks:
+    real ImplementerAgent instances require live credentials and git operations.
+    """
+    agent = MagicMock()
+    agent._cleanup_worktree = AsyncMock()
+
+    async def _never_finish():
+        await asyncio.sleep(1000)
+
+    task = asyncio.create_task(_never_finish())
+    _runs["cancel-test"] = RunState(run_id="cancel-test", agent=agent, task=task)
+
+    resp = await client.delete("/runs/cancel-test")
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    assert "cancel-test" not in _runs
+
+    # Yield to the event loop so the background cleanup task can run.
+    await asyncio.sleep(0)
+    agent._cleanup_worktree.assert_awaited_once()

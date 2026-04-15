@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import tempfile
 from pathlib import Path
@@ -24,6 +25,46 @@ async def _on_startup() -> None:
                 shutil.rmtree(d, ignore_errors=True)
             except Exception:
                 pass
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    """Cancel every active agent run and wait for cleanup before the process exits.
+
+    Steps:
+      1. Clear the refine-stream queue map so SSE generators stop emitting.
+      2. Cancel all in-flight agent asyncio tasks.
+      3. Wait up to 30 s for tasks to acknowledge cancellation.
+      4. Call each agent's worktree cleanup (best-effort; errors are silenced).
+      5. Clear the run registry so GC can collect everything.
+    """
+    from registry import _runs
+    from routes.refine import _refine_queues
+
+    _refine_queues.clear()
+
+    if not _runs:
+        return
+
+    # Step 2: cancel every task that is still running.
+    for state in list(_runs.values()):
+        if not state.task.done():
+            state.task.cancel()
+
+    # Step 3: wait for cancellations to propagate (ignore already-done tasks).
+    pending = [state.task for state in _runs.values() if not state.task.done()]
+    if pending:
+        await asyncio.wait(pending, timeout=30.0)
+
+    # Step 4: remove worktrees (fire each cleanup sequentially; errors are silenced).
+    for state in list(_runs.values()):
+        try:
+            await state.agent._cleanup_worktree()
+        except Exception:
+            pass
+
+    # Step 5: release all references.
+    _runs.clear()
 
 
 _allow_origins = (
