@@ -211,8 +211,8 @@ def main() -> int:
     )
 
     if not skill_files:
-        print(f"WARNING: no skill files found in {SKILLS_DIR}", file=sys.stderr)
-        return 0
+        print(f"ERROR: no skill files found in {SKILLS_DIR}", file=sys.stderr)
+        return 1
 
     all_errors: list[str] = []
     failed = 0
