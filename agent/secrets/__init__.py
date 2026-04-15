@@ -99,3 +99,29 @@ def require_secret(key: str) -> str:
     Raises :class:`KeyError` if the secret is absent or empty.
     """
     return get_secrets_store().require(key)
+
+
+# ── stdlib re-exports ─────────────────────────────────────────────────────────
+# This package shadows the stdlib `secrets` module name on sys.path (because
+# `agent/` is added to sys.path and this package is named `secrets`).
+# Third-party libraries such as starlette do `from secrets import token_hex`,
+# which resolves to this file instead of the stdlib.  We load the real stdlib
+# module by file path and re-export its public API to prevent ImportError.
+import importlib.util as _util
+import os as _os
+
+_hmac_path = _util.find_spec("hmac").origin
+_secrets_path = _os.path.join(_os.path.dirname(_hmac_path), "secrets.py")
+_spec = _util.spec_from_file_location("_real_secrets", _secrets_path)
+_real = _util.module_from_spec(_spec)
+_spec.loader.exec_module(_real)  # type: ignore[union-attr]
+
+token_bytes   = _real.token_bytes
+token_hex     = _real.token_hex
+token_urlsafe = _real.token_urlsafe
+SystemRandom  = _real.SystemRandom
+choice        = _real.choice
+randbelow     = _real.randbelow
+randbits      = _real.randbits
+
+del _util, _os, _hmac_path, _secrets_path, _spec, _real
