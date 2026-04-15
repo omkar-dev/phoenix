@@ -20,6 +20,17 @@ Open an issue with:
 
 Open an issue tagged `enhancement`. Describe the problem you're solving and why you think it belongs in Phoenix rather than a plugin or fork. Check existing issues first to avoid duplicates.
 
+### Contributing a new native skill
+
+Native skills are reusable, Markdown-based agent capabilities that live in
+`agent/native_skills/`. Adding one requires no Python changes — only a single
+`.md` file following the skill contract.
+
+See **[CONTRIBUTING_SKILLS.md](CONTRIBUTING_SKILLS.md)** for the complete
+step-by-step guide, including the required Markdown front-matter, the four
+mandatory sections, how agents discover and attach skills, a full worked
+example, and the additive stacking (composition) pattern.
+
 ### Submitting pull requests
 
 1. **Fork** the repository and create your branch from `main`

@@ -149,6 +149,9 @@ pytest
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+To add a new native skill (a reusable, Markdown-based agent capability), see
+[CONTRIBUTING_SKILLS.md](CONTRIBUTING_SKILLS.md).
+
 ## Security
 
 See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
