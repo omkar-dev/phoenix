@@ -420,7 +420,7 @@ export async function loadIssues(repoArg) {
         _hideForkToggle();
       }
     } catch {
-      // Can't determine fork status (e.g. public repo, no token) — treat as non-fork
+      // Can't determine fork status (e.g. repo not accessible) — treat as non-fork
       state.forkInfo = null;
       state.issueSourceRepo = repo;
       _hideForkToggle();
@@ -522,10 +522,10 @@ export async function loadIssues(repoArg) {
     $('error-detail').textContent =
       err.userMessage ||
       (err.status === 401
-        ? 'Invalid or missing token — click Token to add one.'
+        ? 'GitHub authentication failed. Check GITHUB_TOKEN on the backend.'
         : err.status === 404
           ? 'Repo not found or not accessible.'
-          : 'Check the repo name and token, then try again.');
+          : 'Check the repo name and try again.');
   }
 }
 
@@ -719,7 +719,7 @@ export function initBoardLoader() {
         .catch((err) => {
           showState('error');
           $('error-text').textContent = err.message || 'Failed to fetch issues';
-          $('error-detail').textContent = err.userMessage || 'Check the repo name and token, then try again.';
+          $('error-detail').textContent = err.userMessage || 'Check the repo name and try again.';
         });
     });
   });
