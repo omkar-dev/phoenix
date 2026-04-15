@@ -1,4 +1,4 @@
-import { initBoard, renderBoard } from '../lib/board.js';
+import { initBoard, renderBoard, setMultiSelectMode, getSelectedIssues } from '../lib/board.js';
 import { onRunUpdate, connectGlobalEvents } from '../lib/implementer.js';
 import { AGENT_BASE_URL, SEMANTIC_BASE_URL } from '../lib/config.js';
 import { state } from './state.js';
@@ -11,6 +11,8 @@ import {
   teamsPanelOpenSignal,
   planningPanelOpenSignal,
   claudeSessionOpenSignal,
+  fleetPanelOpenSignal,
+  batchConfirmSignal,
   openDrawer,
 } from '../lib/signals.js';
 import { bus, Events } from '../lib/event-bus.js';
@@ -51,6 +53,39 @@ $('planning-btn')?.addEventListener('click', () => {
 });
 $('claude-session-btn')?.addEventListener('click', () => {
   claudeSessionOpenSignal.value = !claudeSessionOpenSignal.value;
+});
+$('fleet-btn')?.addEventListener('click', () => {
+  fleetPanelOpenSignal.value = !fleetPanelOpenSignal.value;
+});
+
+// ── Multi-select / batch spawn (Phase 8) ──────────────────────────────────────
+let _multiSelectActive = false;
+$('multi-select-btn')?.addEventListener('click', () => {
+  _multiSelectActive = !_multiSelectActive;
+  setMultiSelectMode(_multiSelectActive);
+  const btn = $('multi-select-btn');
+  if (btn) {
+    btn.style.background = _multiSelectActive ? '#dae2ff' : '#f8f9fd';
+    btn.style.color = _multiSelectActive ? '#1d4ed8' : '';
+  }
+});
+
+$('batch-run-btn')?.addEventListener('click', () => {
+  const issues = getSelectedIssues();
+  if (!issues.length) return;
+  // Build BatchIssue array from current issue objects
+  const batchIssues = issues.map((issue) => ({
+    number: issue.number,
+    title: issue.title,
+    repoFullName: state.repoFullName,
+    spec: {
+      intent: issue.title,
+      acceptance_criteria: issue.body
+        ? issue.body.split('\n').filter((l) => l.trim().startsWith('- [ ]') || l.trim().startsWith('- [x]')).map((l) => l.replace(/^- \[.\]\s*/, ''))
+        : [],
+    },
+  }));
+  batchConfirmSignal.value = { issues: batchIssues };
 });
 
 // ── Service health checks ─────────────────────────────────────

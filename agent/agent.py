@@ -181,6 +181,14 @@ class ImplementerAgent:
                 "repo": self.request.repo_full_name,
                 "title": self._issue.title,
             })
+            # Initialise lifecycle tracking
+            try:
+                from lifecycle import LifecycleStateMachine
+                await LifecycleStateMachine.init_working(
+                    self.run_id, self.request.repo_full_name, self.request.issue_number
+                )
+            except Exception:
+                pass  # lifecycle tracking is best-effort
             await self._setup_worktree()
             result = await self._run_agent()
             if not result.success:
@@ -968,6 +976,17 @@ class ImplementerAgent:
                 self.run_id, self.request.repo_full_name,
                 self.request.issue_number, "pr_ready", {"pr_url": pr.html_url},
             )
+            # Update lifecycle state machine: working → pr_open
+            try:
+                from lifecycle import LifecycleStateMachine
+                await LifecycleStateMachine.transition(
+                    self.run_id, "pr_open",
+                    pr_number=pr.number,
+                    pr_url=pr.html_url,
+                    branch_name=result.branch_name,
+                )
+            except Exception:
+                pass  # lifecycle tracking is best-effort
         except Exception as exc:
             await _db.append_run_log(
                 self.run_id, self.request.repo_full_name,

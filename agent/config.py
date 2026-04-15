@@ -51,6 +51,26 @@ class _Settings(BaseSettings):
         "env",
         description="Secrets backend to use: env | doppler | vault | kv",
     )
+    github_webhook_secret: str = Field(
+        "",
+        description="HMAC-SHA256 secret for validating GitHub webhook payloads. Empty = accept all (dev mode).",
+    )
+    slack_webhook_url: str = Field(
+        "",
+        description="Slack incoming webhook URL for notifications. Empty = notifications disabled.",
+    )
+    stuck_threshold_minutes: int = Field(
+        30,
+        description="Minutes of agent inactivity before it is considered stuck.",
+    )
+    lifecycle_poll_enabled: bool = Field(
+        True,
+        description="Enable the CI polling fallback (polls GitHub every LIFECYCLE_POLL_INTERVAL seconds). Disable if you rely solely on webhooks.",
+    )
+    lifecycle_poll_interval: int = Field(
+        90,
+        description="Seconds between CI status polls for the polling fallback. Min 30.",
+    )
 
 
 # Validate and load at import time — bad config fails loudly at startup.
@@ -69,6 +89,11 @@ ANTHROPIC_API_KEY: str = _settings.anthropic_api_key or _secrets.get("ANTHROPIC_
 LLM_MODEL: str = _settings.llm_model
 CORS_ORIGINS: str = _settings.cors_origins
 BASE_REPOS_DIR: Path = _settings.pnx_repos_dir
+GITHUB_WEBHOOK_SECRET: str = _settings.github_webhook_secret or _secrets.get("GITHUB_WEBHOOK_SECRET") or ""
+SLACK_WEBHOOK_URL: str = _settings.slack_webhook_url or _secrets.get("SLACK_WEBHOOK_URL") or ""
+STUCK_THRESHOLD_MINUTES: int = _settings.stuck_threshold_minutes
+LIFECYCLE_POLL_ENABLED: bool = _settings.lifecycle_poll_enabled
+LIFECYCLE_POLL_INTERVAL: int = max(30, _settings.lifecycle_poll_interval)
 
 # Per-repo lock: serialises fetch + worktree-add so concurrent runs for the
 # same repo don't race on the shared base clone.

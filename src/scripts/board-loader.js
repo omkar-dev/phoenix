@@ -473,6 +473,8 @@ export async function loadIssues(repoArg) {
     }).catch(() => {});
     $('new-issue-btn').classList.remove('hidden');
     $('new-issue-btn').classList.add('flex');
+    $('multi-select-btn')?.classList.remove('hidden');
+    $('multi-select-btn')?.classList.add('flex');
     const refreshBtn = $('refresh-issues-btn');
     if (refreshBtn) {
       refreshBtn.disabled = false;

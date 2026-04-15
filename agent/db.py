@@ -94,6 +94,44 @@ CREATE TABLE IF NOT EXISTS interrupted_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_interrupted_issue ON interrupted_runs(repo, issue_number);
 CREATE INDEX IF NOT EXISTS idx_interrupted_branch ON interrupted_runs(repo, branch_name);
+
+CREATE TABLE IF NOT EXISTS pr_lifecycle (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          TEXT NOT NULL,
+    repo            TEXT NOT NULL,
+    issue_number    INTEGER NOT NULL,
+    pr_number       INTEGER,
+    pr_url          TEXT,
+    branch_name     TEXT,
+    state           TEXT NOT NULL DEFAULT 'working',
+    ci_conclusion   TEXT,
+    review_decision TEXT,
+    updated_at      TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_lifecycle_run ON pr_lifecycle(run_id);
+CREATE INDEX IF NOT EXISTS idx_pr_lifecycle_branch ON pr_lifecycle(repo, branch_name);
+CREATE INDEX IF NOT EXISTS idx_pr_lifecycle_repo_issue ON pr_lifecycle(repo, issue_number);
+
+CREATE TABLE IF NOT EXISTS ci_retries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_run_id TEXT NOT NULL,
+    retry_run_id    TEXT NOT NULL,
+    repo            TEXT NOT NULL,
+    issue_number    INTEGER NOT NULL,
+    attempt         INTEGER NOT NULL DEFAULT 1,
+    ci_conclusion   TEXT,
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ci_retries_run ON ci_retries(original_run_id);
+
+CREATE TABLE IF NOT EXISTS stuck_notifications (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      TEXT NOT NULL,
+    notified_at TEXT NOT NULL,
+    reason      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stuck_notif_run ON stuck_notifications(run_id);
 """
 
 
@@ -181,6 +219,48 @@ async def init_db() -> None:
                 await db.commit()
             except Exception:
                 pass
+        # Migration: create pr_lifecycle, ci_retries, stuck_notifications tables.
+        try:
+            await db.executescript("""
+                CREATE TABLE IF NOT EXISTS pr_lifecycle (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id          TEXT NOT NULL,
+                    repo            TEXT NOT NULL,
+                    issue_number    INTEGER NOT NULL,
+                    pr_number       INTEGER,
+                    pr_url          TEXT,
+                    branch_name     TEXT,
+                    state           TEXT NOT NULL DEFAULT 'working',
+                    ci_conclusion   TEXT,
+                    review_decision TEXT,
+                    updated_at      TEXT NOT NULL,
+                    created_at      TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_lifecycle_run ON pr_lifecycle(run_id);
+                CREATE INDEX IF NOT EXISTS idx_pr_lifecycle_branch ON pr_lifecycle(repo, branch_name);
+                CREATE INDEX IF NOT EXISTS idx_pr_lifecycle_repo_issue ON pr_lifecycle(repo, issue_number);
+                CREATE TABLE IF NOT EXISTS ci_retries (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_run_id TEXT NOT NULL,
+                    retry_run_id    TEXT NOT NULL,
+                    repo            TEXT NOT NULL,
+                    issue_number    INTEGER NOT NULL,
+                    attempt         INTEGER NOT NULL DEFAULT 1,
+                    ci_conclusion   TEXT,
+                    created_at      TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ci_retries_run ON ci_retries(original_run_id);
+                CREATE TABLE IF NOT EXISTS stuck_notifications (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id      TEXT NOT NULL,
+                    notified_at TEXT NOT NULL,
+                    reason      TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_stuck_notif_run ON stuck_notifications(run_id);
+            """)
+            await db.commit()
+        except Exception:
+            pass
 
 
 # ── Repos ──────────────────────────────────────────────────────────────────────
@@ -490,3 +570,165 @@ async def get_claude_session_events(session_id: str, limit: int = 200) -> list[d
             payload = {}
         result.append({"event_type": r["event_type"], "payload": payload, "logged_at": r["logged_at"]})
     return result
+
+
+# ── PR Lifecycle ───────────────────────────────────────────────────────────────
+
+async def upsert_lifecycle(
+    run_id: str,
+    repo: str,
+    issue_number: int,
+    **fields,
+) -> None:
+    """Insert or update a pr_lifecycle row. Extra kwargs map to column names."""
+    now = datetime.now(UTC).isoformat()
+    # Allowed updatable columns
+    allowed = {"pr_number", "pr_url", "branch_name", "state", "ci_conclusion", "review_decision", "updated_at"}
+    update_fields = {k: v for k, v in fields.items() if k in allowed}
+    update_fields.setdefault("updated_at", now)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Try insert first
+        try:
+            created_at = fields.get("created_at", now)
+            await db.execute(
+                """
+                INSERT INTO pr_lifecycle
+                    (run_id, repo, issue_number, pr_number, pr_url, branch_name,
+                     state, ci_conclusion, review_decision, updated_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id, repo, issue_number,
+                    fields.get("pr_number"), fields.get("pr_url"), fields.get("branch_name"),
+                    fields.get("state", "working"), fields.get("ci_conclusion"),
+                    fields.get("review_decision"), update_fields["updated_at"], created_at,
+                ),
+            )
+        except aiosqlite.IntegrityError:
+            # Row exists — update only provided fields
+            if update_fields:
+                set_clause = ", ".join(f"{k} = ?" for k in update_fields)
+                values = list(update_fields.values()) + [run_id]
+                await db.execute(
+                    f"UPDATE pr_lifecycle SET {set_clause} WHERE run_id = ?", values
+                )
+        await db.commit()
+
+
+async def get_lifecycle_by_run(run_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM pr_lifecycle WHERE run_id = ?", (run_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_lifecycle_by_branch(repo: str, branch_name: str) -> dict | None:
+    """Return the most recent lifecycle row for a given branch."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM pr_lifecycle WHERE repo = ? AND branch_name = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (repo, branch_name),
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def list_active_lifecycles(max_age_hours: int = 72) -> list[dict]:
+    """Return all non-merged lifecycle rows updated within max_age_hours."""
+    cutoff = datetime.now(UTC).isoformat()[:10]  # date part — simple cutoff
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM pr_lifecycle
+            WHERE state != 'merged'
+              AND updated_at >= datetime('now', ?)
+            ORDER BY updated_at DESC
+            """,
+            (f"-{max_age_hours} hours",),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_pollable_lifecycles(states: set[str]) -> list[dict]:
+    """Return lifecycle rows in given states updated within last 24 hours."""
+    if not states:
+        return []
+    placeholders = ",".join("?" * len(states))
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"""
+            SELECT * FROM pr_lifecycle
+            WHERE state IN ({placeholders})
+              AND updated_at >= datetime('now', '-24 hours')
+            ORDER BY updated_at ASC
+            """,
+            list(states),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── CI Retries ─────────────────────────────────────────────────────────────────
+
+async def save_ci_retry(
+    original_run_id: str,
+    retry_run_id: str,
+    repo: str,
+    issue_number: int,
+    attempt: int,
+    ci_conclusion: str | None = None,
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO ci_retries
+                (original_run_id, retry_run_id, repo, issue_number, attempt, ci_conclusion, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (original_run_id, retry_run_id, repo, issue_number, attempt, ci_conclusion, now),
+        )
+        await db.commit()
+
+
+async def count_ci_retries(original_run_id: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM ci_retries WHERE original_run_id = ?",
+            (original_run_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+# ── Stuck Notifications ────────────────────────────────────────────────────────
+
+async def has_been_notified(run_id: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM stuck_notifications WHERE run_id = ?", (run_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return row is not None
+
+
+async def mark_notified(run_id: str, reason: str) -> None:
+    now = datetime.now(UTC).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO stuck_notifications (run_id, notified_at, reason)
+            VALUES (?, ?, ?)
+            """,
+            (run_id, now, reason),
+        )
+        await db.commit()

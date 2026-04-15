@@ -6,6 +6,42 @@ import { getLaneAction, getCodeEditor, getTeams, getGlobalAiKey, setIssueTeam, s
 import { AGENT_BASE_URL as AGENT_BASE } from './config.js';
 import { createIssue, updateIssue, ensureRepoLabel, updateProjectItemStatus, fetchCurrentUser } from './github-api.js';
 
+// ── Multi-select mode (Phase 8) ────────────────────────────────────────────────
+let _multiSelectMode = false;
+/** @type {Map<number, object>} Maps issue number → issue object */
+const _selectedIssues = new Map();
+
+export function isMultiSelectMode() { return _multiSelectMode; }
+export function getSelectedIssues() { return [..._selectedIssues.values()]; }
+
+export function setMultiSelectMode(enabled) {
+  _multiSelectMode = enabled;
+  if (!enabled) _selectedIssues.clear();
+  // Re-render toolbar button
+  _updateBatchButton();
+}
+
+export function toggleIssueSelection(issue) {
+  if (_selectedIssues.has(issue.number)) {
+    _selectedIssues.delete(issue.number);
+  } else {
+    _selectedIssues.set(issue.number, issue);
+  }
+  _updateBatchButton();
+}
+
+function _updateBatchButton() {
+  const btn = document.getElementById('batch-run-btn');
+  if (!btn) return;
+  const count = _selectedIssues.size;
+  if (count > 0) {
+    btn.textContent = `Run ${count} Agent${count !== 1 ? 's' : ''}`;
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
 // ── Board toast ────────────────────────────────────────────────────────────────
 function _showToast(msg) {
   let el = document.getElementById('board-toast');
@@ -212,6 +248,7 @@ function buildCard(issue, colId) {
   const card = document.createElement('div');
   card.className = 'card rounded-lg p-3 transition-colors select-none';
   card.style.background = '#ffffff';
+  card.style.position = 'relative';
   card.draggable = true;
   card.dataset.issue = issue.number;
 
@@ -225,6 +262,7 @@ function buildCard(issue, colId) {
   const showEditorBtn = colId === 'todo' || colId === 'in_progress';
 
   card.innerHTML = `
+    <div data-select-overlay style="display:none;position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;background:#1d4ed8;color:#fff;font-size:12px;display:none;align-items:center;justify-content:center">✓</div>
     ${issue._local ? `
     <div class="flex items-center gap-1 mb-1.5">
       <span class="material-symbols-outlined" style="font-size:11px;color:#b45309">cloud_off</span>
@@ -286,7 +324,20 @@ function buildCard(issue, colId) {
   card.addEventListener('mouseleave', () => {
     card.style.background = '#ffffff';
   });
-  card.addEventListener('click', () => _state.onOpenDrawer(issue));
+  card.addEventListener('click', () => {
+    if (_multiSelectMode) {
+      toggleIssueSelection(issue);
+      // Toggle checkmark overlay
+      const overlay = card.querySelector('[data-select-overlay]');
+      if (overlay) {
+        const selected = _selectedIssues.has(issue.number);
+        overlay.style.display = selected ? '' : 'none';
+        card.style.outline = selected ? '2px solid #1d4ed8' : '';
+      }
+      return;
+    }
+    _state.onOpenDrawer(issue);
+  });
   card.addEventListener('dragstart', () => {
     _state.dragNum = issue.number;
     _state.dragFrom = colId;

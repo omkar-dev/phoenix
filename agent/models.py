@@ -50,6 +50,8 @@ class RunRequest(BaseModel):
     max_iterations: Optional[int] = Field(None, ge=1, description="Max agent iterations per run")
     existing_branch: Optional[str] = None       # when set, check out this branch and push to it (no new PR)
     critic: Optional[CriticConfig] = None       # when set, enables post-run LLM evaluation
+    enable_planner: bool = False                # Phase 7: run PlannerAgent before implementation
+    enable_reviewer: bool = False               # Phase 7: run ReviewerAgent after PR creation
 
 
 class RunEvent(BaseModel):
@@ -125,3 +127,8 @@ class TeamAssignmentResult(BaseModel):
     confidence: float
     needs_manual: bool
     reasoning: str
+
+
+class BatchRunRequest(BaseModel):
+    runs: list[RunRequest]
+    max_concurrent: int = Field(3, ge=1, le=10)

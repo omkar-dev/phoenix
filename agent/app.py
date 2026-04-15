@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 import db as _db
 from config import CORS_ORIGINS
-from routes import claude_sessions, events, movements, notes, refine, repos, runs, worktree
+from routes import claude_sessions, events, fleet, movements, notes, refine, repos, runs, webhooks, worktree
 
 app = FastAPI(title="Phoenix ImplementerAgent", version="5.0.0")
 
@@ -27,6 +27,14 @@ async def _on_startup() -> None:
                 shutil.rmtree(d, ignore_errors=True)
             except Exception:
                 pass
+    # Start CI polling fallback (Phase 4)
+    from poller import LifecyclePoller
+    app.state.poller = LifecyclePoller()
+    asyncio.create_task(app.state.poller.run(), name="lifecycle-poller")
+    # Start stuck agent detector (Phase 6)
+    from stuck_detector import StuckDetector
+    app.state.stuck_detector = StuckDetector()
+    asyncio.create_task(app.state.stuck_detector.run(), name="stuck-detector")
 
 
 @app.on_event("shutdown")
@@ -68,6 +76,12 @@ async def _on_shutdown() -> None:
     # Step 5: release all references.
     _runs.clear()
 
+    # Stop background tasks (Phase 4, 6)
+    if hasattr(app.state, "poller"):
+        app.state.poller.stop()
+    if hasattr(app.state, "stuck_detector"):
+        app.state.stuck_detector.stop()
+
 
 _allow_origins = (
     [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
@@ -108,3 +122,5 @@ app.include_router(movements.router)
 app.include_router(notes.router)
 app.include_router(claude_sessions.router)
 app.include_router(events.router)
+app.include_router(webhooks.router)
+app.include_router(fleet.router)

@@ -14,7 +14,7 @@ import db as _db
 from agent import ImplementerAgent
 from config import GITHUB_TOKEN
 from critic import DefaultCritic
-from models import PushDirectRequest, RunEvent, RunRequest
+from models import BatchRunRequest, PushDirectRequest, RunEvent, RunRequest
 from registry import RunState, _runs
 
 router = APIRouter()
@@ -26,9 +26,8 @@ def _on_task_done(run_id: str, task: asyncio.Task) -> None:
         state.result = task.result()
 
 
-@router.post("/runs", status_code=202)
-async def create_run(request: RunRequest) -> dict:
-    run_id = str(uuid.uuid4())
+def _make_agent(run_id: str, request: RunRequest):
+    """Instantiate ImplementerAgent or AgentPipeline depending on request flags."""
     critic = None
     if request.critic and request.critic.enabled:
         critic = DefaultCritic(
@@ -36,7 +35,16 @@ async def create_run(request: RunRequest) -> dict:
             model=request.critic.model or "claude-haiku-4-5-20251001",
             threshold=request.critic.threshold,
         )
-    agent = ImplementerAgent(run_id, request, critic=critic)
+    if request.enable_planner or request.enable_reviewer:
+        from pipeline import AgentPipeline
+        return AgentPipeline(run_id, request, critic=critic)
+    return ImplementerAgent(run_id, request, critic=critic)
+
+
+@router.post("/runs", status_code=202)
+async def create_run(request: RunRequest) -> dict:
+    run_id = str(uuid.uuid4())
+    agent = _make_agent(run_id, request)
     task = asyncio.create_task(agent.run(), name=f"run-{run_id[:8]}")
     _runs[run_id] = RunState(run_id=run_id, agent=agent, task=task)
     task.add_done_callback(lambda t: _on_task_done(run_id, t))
@@ -47,6 +55,35 @@ async def create_run(request: RunRequest) -> dict:
         "repo": request.repo_full_name,
     }))
     return {"run_id": run_id, "stream_url": f"/runs/{run_id}/stream"}
+
+
+@router.post("/runs/batch", status_code=202)
+async def create_batch_run(batch: BatchRunRequest) -> dict:
+    """Spawn multiple agent runs with a concurrency limit."""
+    sem = asyncio.Semaphore(batch.max_concurrent)
+    created: list[dict] = []
+
+    async def _start_one(req: RunRequest) -> None:
+        async with sem:
+            run_id = str(uuid.uuid4())
+            agent = _make_agent(run_id, req)
+            task = asyncio.create_task(agent.run(), name=f"run-{run_id[:8]}")
+            _runs[run_id] = RunState(run_id=run_id, agent=agent, task=task)
+            task.add_done_callback(lambda t: _on_task_done(run_id, t))
+            await _broadcast.broadcast({
+                "type": "run_started",
+                "runId": run_id,
+                "issueNumber": req.issue_number,
+                "repo": req.repo_full_name,
+            })
+            created.append({
+                "run_id": run_id,
+                "issue_number": req.issue_number,
+                "stream_url": f"/runs/{run_id}/stream",
+            })
+
+    await asyncio.gather(*(_start_one(req) for req in batch.runs))
+    return {"batch_size": len(created), "runs": created}
 
 
 @router.get("/runs/{run_id}/stream")

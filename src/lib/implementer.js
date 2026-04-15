@@ -19,6 +19,12 @@ export const dismissedSuggestions = new Set();
 /** @type {Map<number, number>} Maps issue number → unresolved PR review thread count */
 export const prUnresolvedStore = new Map();
 
+/**
+ * @type {Map<number, {runId:string, state:string, prUrl:string|null, prNumber:number|null, branch:string|null, ciConclusion:string|null, reviewDecision:string|null}>}
+ * Maps issue number → current PR lifecycle state (working|pr_open|ci_checking|ci_failed|ci_passed|changes_requested|approved|merged)
+ */
+export const lifecycleStore = new Map();
+
 /** Update the unresolved PR thread count for an issue and notify listeners */
 export function setPrUnresolved(issueNumber, count) {
   prUnresolvedStore.set(issueNumber, count);
@@ -1072,6 +1078,59 @@ function _handleGlobalEvent(e) {
 
   if (type === 'card_moved') {
     window.dispatchEvent(new CustomEvent('pnx:remote-card-moved', { detail: msg }));
+    return;
+  }
+
+  if (type === 'lifecycle_updated') {
+    const issueNum = msg.issueNumber;
+    if (!issueNum) return;
+    lifecycleStore.set(issueNum, {
+      runId: msg.runId,
+      state: msg.state,
+      prUrl: msg.prUrl ?? null,
+      prNumber: msg.prNumber ?? null,
+      branch: msg.branch ?? null,
+      ciConclusion: msg.ciConclusion ?? null,
+      reviewDecision: msg.reviewDecision ?? null,
+    });
+    // Update the run card step label for visible CI/review states
+    const cur = runStore.get(issueNum);
+    if (cur) {
+      const stepLabels = {
+        ci_checking: 'CI running…',
+        ci_failed: 'CI Failed — retrying…',
+        ci_passed: 'CI passed',
+        changes_requested: 'Changes requested',
+        approved: 'Approved',
+        merged: 'Merged',
+      };
+      const label = stepLabels[msg.state];
+      if (label) _set(issueNum, { ...cur, step: label });
+    }
+    _notify();
+    return;
+  }
+
+  if (type === 'review_requested_changes') {
+    const issueNum = msg.issueNumber;
+    if (!issueNum) return;
+    const cur = runStore.get(issueNum);
+    if (cur) {
+      _set(issueNum, { ...cur, step: `Changes requested by ${msg.reviewer || 'reviewer'}` });
+    }
+    _notify();
+    return;
+  }
+
+  if (type === 'pipeline_stage') {
+    const issueNum = msg.issueNumber;
+    if (!issueNum) return;
+    const cur = runStore.get(issueNum);
+    if (cur) {
+      const label = msg.stage === 'planning' ? 'Planning…' : msg.stage === 'reviewing' ? 'Reviewing…' : msg.stage;
+      _set(issueNum, { ...cur, step: label });
+    }
+    _notify();
     return;
   }
 }

@@ -13,6 +13,7 @@ import {
   runStore,
   logStore,
   suggestionStore,
+  lifecycleStore,
   onRunUpdate,
   clearHistory as _clearHistory,
   dismissSuggestion as _dismissSuggestion,
@@ -33,6 +34,9 @@ export const agentsPanelOpenSignal = signal(false);
 export const teamsPanelOpenSignal = signal(false);
 export const planningPanelOpenSignal = signal(false);
 export const claudeSessionOpenSignal = signal(false);
+export const fleetPanelOpenSignal = signal(false);
+// Phase 8: batch spawn — set to { issues: BatchIssue[] } to open confirmation modal
+export const batchConfirmSignal = signal(null);
 
 // Drawer: carries the selected issue + active tab so the island re-renders on
 // every open/close/tab-switch without any extra prop drilling.
@@ -55,6 +59,7 @@ export function setDrawerTab(tab) {
 export const runsSignal = signal(new Map(runStore));
 export const logsSignal = signal(new Map(logStore));
 export const suggestionsSignal = signal(new Map(suggestionStore));
+export const lifecycleSignal = signal(new Map(lifecycleStore));
 export const agentsSignal = signal(_getAgents());
 
 // Bridge: every time implementer fires a run update, push new Map copies so
@@ -63,6 +68,7 @@ onRunUpdate(() => {
   runsSignal.value = new Map(runStore);
   logsSignal.value = new Map(logStore);
   suggestionsSignal.value = new Map(suggestionStore);
+  lifecycleSignal.value = new Map(lifecycleStore);
 });
 
 // ── Agent helpers ─────────────────────────────────────────────────────────────
