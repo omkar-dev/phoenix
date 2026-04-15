@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { drawerSignal, closeDrawer, setDrawerTab, runsSignal, logsSignal, suggestionsSignal, dismissSuggestion } from '../../lib/signals.js';
+import { drawerSignal, closeDrawer, setDrawerTab, runsSignal, logsSignal, suggestionsSignal, dismissSuggestion, issueTeamMetaSignal } from '../../lib/signals.js';
 import { triggerImplement, triggerAddressPRComments, triggerResolveConflicts, triggerReimplement, cancelRun, pushRun } from '../../scripts/run-dispatcher.js';
 import { setPrUnresolved, setPrConflicts } from '../../lib/implementer.js';
 import { updateIssue, fetchIssueComments, createIssueComment, fetchOrgMembers, fetchRepoLabels, createRepoLabel, fetchPRReviewThreads, fetchPRMergeable } from '../../lib/github-api.js';
-import { getAgents, getTeams, getCodeEditor, getIssueTeam, setIssueTeam } from '../../lib/agents.js';
+import { getAgents, getTeams, getCodeEditor, getIssueTeam, setIssueTeam, clearIssueTeamMeta } from '../../lib/agents.js';
 import { AGENT_BASE_URL } from '../../lib/config.js';
 import { state } from '../../scripts/state.js';
 import { renderBoard } from '../../lib/board.js';
@@ -901,6 +901,14 @@ function DetailsTab({ issue }: { issue: Issue }) {
   const assignedTeamId = state.repoFullName ? getIssueTeam(state.repoFullName, issue.number) : null;
   const suggestion = (suggestionsSignal.value as Map<number, any>).get(issue.number);
 
+  // AI team assignment metadata — subscribing to this signal keeps the Team row reactive
+  const allTeamMeta = issueTeamMetaSignal.value as Record<string, Record<string, any>>;
+  const teamMeta = state.repoFullName
+    ? (allTeamMeta[state.repoFullName]?.[String(issue.number)] ?? null)
+    : null;
+  const isAIAssigned = teamMeta?.source === 'ai' && !teamMeta?.needsManual;
+  const needsManualTeam = teamMeta?.source === 'ai' && teamMeta?.needsManual === true;
+
   const stateColor =
     issue.state === 'open'
       ? { bg: '#dbeafe', fg: '#1d4ed8' }
@@ -1152,21 +1160,56 @@ function DetailsTab({ issue }: { issue: Issue }) {
         </FieldRow>
 
         <FieldRow label="Team">
-          <select
-            class="text-xs text-on-surface bg-transparent outline-none cursor-pointer rounded px-1 py-0.5 transition-colors hover:bg-surface-container"
-            value={assignedTeamId ?? ''}
-            onChange={(e) => {
-              const val = (e.target as HTMLSelectElement).value || null;
-              if (state.repoFullName) setIssueTeam(state.repoFullName, issue.number, val);
-            }}
-          >
-            <option value="">— None —</option>
-            {teams.map((t: any) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          <div class="flex-1 min-w-0 flex flex-col gap-1">
+            {needsManualTeam && (
+              <div
+                class="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium"
+                style="background:#fef3c7;color:#b45309;border:1px solid #fde68a"
+              >
+                <span class="material-symbols-outlined shrink-0" style="font-size:12px">person_search</span>
+                Needs manual assignment
+                {teamMeta?.reasoning && (
+                  <span
+                    class="material-symbols-outlined shrink-0 ml-auto"
+                    style="font-size:12px;cursor:help"
+                    title={teamMeta.reasoning}
+                  >
+                    info
+                  </span>
+                )}
+              </div>
+            )}
+            <div class="flex items-center gap-1.5">
+              <select
+                class="text-xs text-on-surface bg-transparent outline-none cursor-pointer rounded px-1 py-0.5 transition-colors hover:bg-surface-container flex-1 min-w-0"
+                value={assignedTeamId ?? ''}
+                onChange={(e) => {
+                  const val = (e.target as HTMLSelectElement).value || null;
+                  if (state.repoFullName) {
+                    setIssueTeam(state.repoFullName, issue.number, val);
+                    clearIssueTeamMeta(state.repoFullName, issue.number);
+                    window.dispatchEvent(new CustomEvent('pnx:team-meta-update'));
+                  }
+                }}
+              >
+                <option value="">— None —</option>
+                {teams.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {isAIAssigned && (
+                <span
+                  class="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style="background:#dae2ff;color:#003d9b"
+                  title={teamMeta?.reasoning ?? 'Assigned by AI'}
+                >
+                  AI
+                </span>
+              )}
+            </div>
+          </div>
         </FieldRow>
 
         <FieldRow label="Labels">

@@ -122,6 +122,46 @@ export function setIssueTeam(repo, issueNumber, teamId) {
   } catch {}
 }
 
+// ── Issue → Team assignment metadata ─────────────────────────
+// Stores AI-assignment details: source, confidence, needsManual, reasoning.
+
+const ISSUE_TEAM_META_KEY = 'pnx_issue_team_meta';
+
+function _getIssueTeamMetaAll() {
+  try {
+    return JSON.parse(localStorage.getItem(ISSUE_TEAM_META_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function getAllIssueTeamMeta() {
+  return _getIssueTeamMetaAll();
+}
+
+export function getIssueTeamMeta(repo, issueNumber) {
+  return _getIssueTeamMetaAll()[repo]?.[String(issueNumber)] ?? null;
+}
+
+export function setIssueTeamMeta(repo, issueNumber, meta) {
+  const all = _getIssueTeamMetaAll();
+  if (!all[repo]) all[repo] = {};
+  all[repo][String(issueNumber)] = meta;
+  try {
+    localStorage.setItem(ISSUE_TEAM_META_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+export function clearIssueTeamMeta(repo, issueNumber) {
+  const all = _getIssueTeamMetaAll();
+  if (all[repo]) {
+    delete all[repo][String(issueNumber)];
+    try {
+      localStorage.setItem(ISSUE_TEAM_META_KEY, JSON.stringify(all));
+    } catch {}
+  }
+}
+
 // ── Global AI key/provider ────────────────────────────────────
 
 export function getGlobalAiProvider() {

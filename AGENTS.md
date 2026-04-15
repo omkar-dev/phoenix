@@ -61,7 +61,7 @@ make clean            # Remove build artifacts
 
 **Backend structure:**
 - `agent/agent.py` — Core `ImplementerAgent` class: OpenHands SDK integration, file intelligence, worktree-based git isolation, SSE event streaming
-- `agent/routes/` — Thin FastAPI route handlers (runs, refine, worktree, repos, movements, notes)
+- `agent/routes/` — Thin FastAPI route handlers (runs, refine, worktree, repos, movements, notes). `movements.py` also hosts `POST /team-assignment` which calls the Anthropic API to auto-assign a team when an issue is moved.
 - `agent/db.py` — Async SQLite (`~/.pnx/pnx.db`) via aiosqlite for repos, movements, run logs
 - `agent/models.py` — Pydantic request/response models
 - `agent/registry.py` — In-memory registry of active runs

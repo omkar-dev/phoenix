@@ -92,3 +92,28 @@ class PushDirectRequest(BaseModel):
     issue_number: int
     base_branch: str = "main"
     create_draft_pr: bool = True
+
+
+class TeamInfo(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+
+
+class TeamAssignmentRequest(BaseModel):
+    repo: str
+    issue_number: int
+    issue_title: str
+    issue_body: str = ""
+    to_column: str
+    teams: list[TeamInfo]
+    llm_api_key: str | None = None
+    llm_model: str | None = None
+
+
+class TeamAssignmentResult(BaseModel):
+    team_id: str | None
+    team_name: str | None
+    confidence: float
+    needs_manual: bool
+    reasoning: str

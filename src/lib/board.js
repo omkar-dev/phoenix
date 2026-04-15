@@ -2,7 +2,7 @@ import { COLUMNS, LABEL_MAP, COLUMN_STATUS_LABELS } from './constants.js';
 import { escHtml, timeAgo, detectPriority, priorityIcon } from './formatters.js';
 import { assignColumn } from './column-mapper.js';
 import { runStore, refine, cancelRun, pushRun, prUnresolvedStore, prConflictsStore } from './implementer.js';
-import { getLaneAction, getCodeEditor } from './agents.js';
+import { getLaneAction, getCodeEditor, getTeams, getGlobalAiKey, setIssueTeam, setIssueTeamMeta } from './agents.js';
 import { AGENT_BASE_URL as AGENT_BASE } from './config.js';
 import { createIssue, updateIssue, ensureRepoLabel, updateProjectItemStatus, fetchCurrentUser } from './github-api.js';
 
@@ -581,7 +581,8 @@ function _renderRunBar(run, colId, issue) {
 /**
  * Log the movement to SQLite (with actor) and auto-assign the issue to the
  * current GitHub user when the destination is a post-triage column.
- * Runs fire-and-forget; all errors are swallowed.
+ * Also triggers AI-based team assignment (fire-and-forget).
+ * All errors are swallowed.
  */
 async function _handleMove(num, fromCol, toCol) {
   const user = await fetchCurrentUser().catch(() => null);
@@ -600,18 +601,78 @@ async function _handleMove(num, fromCol, toCol) {
   }).catch(() => {});
 
   // Auto-assign: only for post-triage destinations and when a user is known
-  if (toCol === 'triage' || !user?.login) return;
+  if (toCol !== 'triage' && user?.login) {
+    const issue = _state.allIssues.find((i) => i.number === num);
+    if (issue && !issue._local) {
+      const issueRepo = _state.issueSourceRepo || _state.repoFullName;
+      try {
+        const updated = await updateIssue(issueRepo, num, { assignees: [user.login] });
+        const idx = _state.allIssues.findIndex((i) => i.number === num);
+        if (idx !== -1) _state.allIssues[idx] = { ..._state.allIssues[idx], assignees: updated.assignees };
+      } catch (err) {
+        _showToast(`Couldn't auto-assign #${num}: ${err.userMessage || err.message}`);
+      }
+    }
+  }
+
+  // AI team assignment — always fire, even for triage (teams may apply there too)
+  _aiAssignTeam(num, toCol);
+}
+
+/**
+ * Call the AI team-assignment endpoint and persist the result.
+ * Runs fire-and-forget; updates localStorage and notifies Preact islands via
+ * a 'pnx:team-meta-update' custom event.
+ */
+async function _aiAssignTeam(num, toCol) {
+  if (!_state.repoFullName) return;
   const issue = _state.allIssues.find((i) => i.number === num);
   if (!issue || issue._local) return;
 
-  const issueRepo = _state.issueSourceRepo || _state.repoFullName;
+  const teams = getTeams();
+  if (!teams.length) return;
+
+  const apiKey = getGlobalAiKey();
+
   try {
-    const updated = await updateIssue(issueRepo, num, { assignees: [user.login] });
-    const idx = _state.allIssues.findIndex((i) => i.number === num);
-    if (idx !== -1) _state.allIssues[idx] = { ..._state.allIssues[idx], assignees: updated.assignees };
-  } catch (err) {
-    _showToast(`Couldn't auto-assign #${num}: ${err.userMessage || err.message}`);
-  }
+    const res = await fetch(`${AGENT_BASE}/team-assignment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo: _state.repoFullName,
+        issue_number: num,
+        issue_title: issue.title,
+        issue_body: issue.body || '',
+        to_column: toCol,
+        teams: teams.map((t) => ({ id: t.id, name: t.name, description: t.description ?? null })),
+        ...(apiKey ? { llm_api_key: apiKey } : {}),
+      }),
+    });
+    if (!res.ok) return;
+    const result = await res.json();
+
+    // Persist the AI-chosen team (only when confident enough)
+    if (result.team_id) {
+      setIssueTeam(_state.repoFullName, num, result.team_id);
+    }
+    // Always store metadata so the drawer can show the AI badge or needs-manual warning
+    setIssueTeamMeta(_state.repoFullName, num, {
+      teamId: result.team_id,
+      teamName: result.team_name,
+      confidence: result.confidence,
+      needsManual: result.needs_manual,
+      reasoning: result.reasoning,
+      source: 'ai',
+      assignedAt: new Date().toISOString(),
+    });
+
+    // Notify Preact islands (issueTeamMetaSignal in signals.js listens to this event)
+    window.dispatchEvent(new CustomEvent('pnx:team-meta-update'));
+
+    if (result.needs_manual) {
+      _showToast(`AI couldn't confidently assign a team to #${num} — please review.`);
+    }
+  } catch {}
 }
 
 export function moveCard(num, from, to, getFilters) {
