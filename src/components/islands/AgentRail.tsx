@@ -14,6 +14,7 @@ import {
   runHistoryOpenSignal,
   clearHistory,
 } from '../../lib/signals.js';
+import { formatCost } from '../../lib/formatters.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -48,11 +49,19 @@ function scfg(status: string) {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface RunCost {
+  inputTokens: number;
+  outputTokens: number;
+  estimatedUsd: number;
+  model: string;
+}
+
 interface Run {
   status: string;
   step?: string;
   prUrl?: string | null;
   actionType?: string;
+  cost?: RunCost | null;
 }
 
 interface LogEntry {
@@ -277,6 +286,19 @@ export default function AgentRail() {
                       <p class="text-[9px] text-on-surface-variant/60 truncate mt-0.5">
                         {run.step ?? ''}
                       </p>
+                      {run.cost && run.cost.estimatedUsd > 0 && (
+                        <p class="flex items-center gap-0.5 mt-0.5">
+                          <span
+                            class="material-symbols-outlined"
+                            style="font-size:9px;color:#737885"
+                          >
+                            payments
+                          </span>
+                          <span class="text-[9px]" style="color:#737885">
+                            {formatCost(run.cost.estimatedUsd)}
+                          </span>
+                        </p>
+                      )}
                     </div>
                     <span
                       class="material-symbols-outlined shrink-0"

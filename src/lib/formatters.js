@@ -35,3 +35,15 @@ export function priorityIcon(p) {
   };
   return map[p] ?? map.low;
 }
+
+/**
+ * Format an estimated USD cost value for display.
+ * @param {number} usd
+ * @returns {string} e.g. "< $0.001", "$0.0234", "$0.12", "$1.50"
+ */
+export function formatCost(usd) {
+  if (!usd || usd <= 0) return '';
+  if (usd < 0.001) return '< $0.001';
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  return `$${usd.toFixed(2)}`;
+}
