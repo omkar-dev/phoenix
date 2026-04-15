@@ -172,15 +172,11 @@ After `## Usage` you may add any of:
 
 Delete any optional section you do not need.
 
-python -c "from native_skills import list_skills; print({s['name']: s['title'] for s in list_skills()})"
+### Step 8 — verify discovery
+
 ```bash
 cd agent
 python -c "from native_skills import list_skills; [print(s['name'], '-', s['title']) for s in list_skills()]"
-```
-
-Your new skill should appear in the alphabetically sorted list.
-
-### Step 9 — open a pull request
 
 No other files need to change. Open a PR with:
 
