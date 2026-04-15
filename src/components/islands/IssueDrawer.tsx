@@ -872,8 +872,14 @@ function DetailsTab({ issue }: { issue: Issue }) {
   const isLocal = !!(issue as any)._local;
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleVal, setTitleVal] = useState(issue.title);
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const titleEscapeRef = useRef(false);
   const [editingDesc, setEditingDesc] = useState(false);
   const [descVal, setDescVal] = useState(issue.body ?? '');
+  const [descSaving, setDescSaving] = useState(false);
+  const [descError, setDescError] = useState<string | null>(null);
+  const descEscapeRef = useRef(false);
   const [applyStatus, setApplyStatus] = useState<{ msg: string; ok: boolean } | null>(null);
   const [applyLoading, setApplyLoading] = useState(false);
   const [copyLabel, setCopyLabel] = useState<'Copy Markdown' | 'Copied!'>('Copy Markdown');
@@ -903,17 +909,47 @@ function DetailsTab({ issue }: { issue: Issue }) {
   const createdDate = new Date(issue.created_at);
   const updatedDate = new Date(issue.updated_at);
 
-  function commitTitle(val: string) {
+  async function commitTitle(val: string) {
     const next = val.trim() || issue.title;
-    issue.title = next;
-    setTitleVal(next);
     setEditingTitle(false);
+    setTitleVal(next);
+    if (next === issue.title) return;
+    if (isLocal) { issue.title = next; return; }
+    const repo = (state.issueSourceRepo || state.repoFullName) as string | null;
+    if (!repo) { issue.title = next; return; }
+    setTitleSaving(true);
+    setTitleError(null);
+    try {
+      await updateIssue(repo, issue.number, { title: next, body: undefined, assignees: undefined, labels: undefined });
+      issue.title = next;
+      renderBoard(getFilters);
+    } catch (err: any) {
+      setTitleVal(issue.title);
+      setTitleError(err.userMessage || err.message || 'Failed to update title');
+    } finally {
+      setTitleSaving(false);
+    }
   }
 
-  function commitDesc(val: string) {
-    issue.body = val;
-    setDescVal(val);
+  async function commitDesc(val: string) {
     setEditingDesc(false);
+    setDescVal(val);
+    if (val === (issue.body ?? '')) return;
+    if (isLocal) { issue.body = val; return; }
+    const repo = (state.issueSourceRepo || state.repoFullName) as string | null;
+    if (!repo) { issue.body = val; return; }
+    setDescSaving(true);
+    setDescError(null);
+    try {
+      await updateIssue(repo, issue.number, { title: undefined, body: val, assignees: undefined, labels: undefined });
+      issue.body = val;
+      renderBoard(getFilters);
+    } catch (err: any) {
+      setDescVal(issue.body ?? '');
+      setDescError(err.userMessage || err.message || 'Failed to update description');
+    } finally {
+      setDescSaving(false);
+    }
   }
 
   async function handleApply() {
@@ -1029,10 +1065,9 @@ function DetailsTab({ issue }: { issue: Issue }) {
         </div>
       )}
 
-      {/* Title */}
-      <div
+        onClick={() => { if (!editingTitle && !titleSaving) { setTitleError(null); setEditingTitle(true); } }}
         class="group relative cursor-text rounded-lg px-2 py-1.5 -mx-2 transition-colors hover:bg-[#edeef0]"
-        onClick={() => !editingTitle && setEditingTitle(true)}
+        onClick={() => !editingTitle && !titleSaving && setEditingTitle(true)}
       >
         <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/50 mb-1">
           #{issue.number}
@@ -1044,13 +1079,17 @@ function DetailsTab({ issue }: { issue: Issue }) {
             value={titleVal}
             autoFocus
             onInput={(e) => setTitleVal((e.target as HTMLInputElement).value)}
-            onBlur={(e) => commitTitle((e.target as HTMLInputElement).value)}
+            onBlur={(e) => {
+              if (titleEscapeRef.current) { titleEscapeRef.current = false; return; }
+              commitTitle((e.target as HTMLInputElement).value);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                commitTitle((e.target as HTMLInputElement).value);
+                (e.target as HTMLInputElement).blur();
               }
               if (e.key === 'Escape') {
+                titleEscapeRef.current = true;
                 setTitleVal(issue.title);
                 setEditingTitle(false);
               }
@@ -1059,7 +1098,7 @@ function DetailsTab({ issue }: { issue: Issue }) {
         ) : (
           <h2 class="font-semibold text-[15px] text-on-surface leading-snug pr-6">{titleVal}</h2>
         )}
-        {!editingTitle && (
+        {!editingTitle && !titleSaving && (
           <span
             class="material-symbols-outlined absolute top-2 right-2 opacity-0 group-hover:opacity-60 transition-opacity text-on-surface-variant"
             style="font-size:14px"
@@ -1067,7 +1106,21 @@ function DetailsTab({ issue }: { issue: Issue }) {
             edit
           </span>
         )}
+        {titleSaving && (
+          <span
+            class="material-symbols-outlined absolute top-2 right-2 animate-spin text-on-surface-variant/50"
+            style="font-size:14px"
+          >
+            autorenew
+          </span>
+        )}
       </div>
+      {titleError && (
+        <div class="flex items-center gap-1 text-[11px] px-2 -mt-2" style="color:#ba1a1a">
+          <span class="material-symbols-outlined shrink-0" style="font-size:12px">error_outline</span>
+          {titleError}
+        </div>
+      )}
 
       {/* Label pills */}
       {labels.length > 0 && (
@@ -1156,7 +1209,7 @@ function DetailsTab({ issue }: { issue: Issue }) {
         <div
           class="group relative rounded-xl cursor-text transition-colors"
           style="border:1px solid #e1e2e4;min-height:72px"
-          onClick={() => !editingDesc && setEditingDesc(true)}
+          onClick={() => !editingDesc && !descSaving && setEditingDesc(true)}
         >
           {editingDesc ? (
             <>
@@ -1166,13 +1219,17 @@ function DetailsTab({ issue }: { issue: Issue }) {
                 placeholder="Add a description…"
                 autoFocus
                 onInput={(e) => setDescVal((e.target as HTMLTextAreaElement).value)}
-                onBlur={(e) => commitDesc((e.target as HTMLTextAreaElement).value)}
+                onBlur={(e) => {
+                  if (descEscapeRef.current) { descEscapeRef.current = false; return; }
+                  commitDesc((e.target as HTMLTextAreaElement).value);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && e.ctrlKey) {
                     e.preventDefault();
-                    commitDesc((e.target as HTMLTextAreaElement).value);
+                    (e.target as HTMLTextAreaElement).blur();
                   }
                   if (e.key === 'Escape') {
+                    descEscapeRef.current = true;
                     setDescVal(issue.body ?? '');
                     setEditingDesc(false);
                   }
@@ -1196,15 +1253,31 @@ function DetailsTab({ issue }: { issue: Issue }) {
                   <span class="italic text-on-surface-variant/40">Click to add a description…</span>
                 )}
               </div>
-              <span
-                class="material-symbols-outlined absolute top-2 right-2 opacity-0 group-hover:opacity-50 transition-opacity text-on-surface-variant"
-                style="font-size:13px"
-              >
-                edit
-              </span>
+              {!descSaving && (
+                <span
+                  class="material-symbols-outlined absolute top-2 right-2 opacity-0 group-hover:opacity-50 transition-opacity text-on-surface-variant"
+                  style="font-size:13px"
+                >
+                  edit
+                </span>
+              )}
+              {descSaving && (
+                <span
+                  class="material-symbols-outlined absolute top-2 right-2 animate-spin text-on-surface-variant/50"
+                  style="font-size:13px"
+                >
+                  autorenew
+                </span>
+              )}
             </>
           )}
         </div>
+        {descError && (
+          <div class="flex items-center gap-1 text-[11px] mt-1 px-1" style="color:#ba1a1a">
+            <span class="material-symbols-outlined shrink-0" style="font-size:12px">error_outline</span>
+            {descError}
+          </div>
+        )}
       </div>
 
       {/* Comments */}
