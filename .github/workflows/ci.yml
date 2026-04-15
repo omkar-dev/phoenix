@@ -44,6 +44,28 @@ jobs:
           ANTHROPIC_API_KEY: test-key
         run: pytest --tb=short
 
+  # ── Native skills validation ─────────────────────────────────────────────────
+  validate-skills:
+    name: Validate native skills
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint validate_skills.py (ruff)
+        run: ruff check scripts/validate_skills.py
+
+      - name: Validate skill Markdown files
+        run: python scripts/validate_skills.py
+
   # ── Astro frontend ───────────────────────────────────────────────────────────
   frontend:
     name: Frontend
