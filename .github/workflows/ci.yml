@@ -57,6 +57,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint validate_skills.py (ruff)
+        run: ruff check scripts/validate_skills.py
+
       - name: Validate skill Markdown files
         run: python scripts/validate_skills.py
 

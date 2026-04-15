@@ -75,21 +75,26 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
 
 
 def _get_h2_sections(body: str) -> list[str]:
-    """Return H2 heading names in the order they appear."""
-    return [
-        line[3:].strip()
-        for line in body.splitlines()
-        if line.startswith("## ")
-    ]
+    """Return H2 heading names in the order they appear (ignores code blocks)."""
+    sections = []
+    in_fence = False
+    for line in body.splitlines():
+        if line.startswith("```") or line.startswith("~~~"):
+            in_fence = not in_fence
+        if not in_fence and line.startswith("## "):
+            sections.append(line[3:].strip())
+    return sections
 
 
 def _section_body(body: str, section: str) -> str:
     """Return the text between ``## section`` and the next ``##`` heading."""
-    lines = body.splitlines()
     inside = False
+    in_fence = False
     collected: list[str] = []
-    for line in lines:
-        if line.startswith("## "):
+    for line in body.splitlines():
+        if line.startswith("```") or line.startswith("~~~"):
+            in_fence = not in_fence
+        if not in_fence and line.startswith("## "):
             if inside:
                 break
             if line[3:].strip() == section:
@@ -116,9 +121,18 @@ def _has_table_or_none(section_body: str) -> bool:
 
 def _has_content(section_body: str) -> bool:
     """Return True if the section has at least one non-empty, non-comment line."""
+    in_comment = False
     for line in section_body.splitlines():
         stripped = line.strip()
-        if stripped and not stripped.startswith("<!--"):
+        if not in_comment and stripped.startswith("<!--"):
+            if "-->" not in stripped:
+                in_comment = True
+            continue
+        if in_comment:
+            if "-->" in stripped:
+                in_comment = False
+            continue
+        if stripped:
             return True
     return False
 
