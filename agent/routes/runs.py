@@ -11,8 +11,8 @@ from github import Github
 
 import db as _db
 from agent import ImplementerAgent
-from models import RunRequest
 from config import GITHUB_TOKEN
+from critic import DefaultCritic
 from models import PushDirectRequest, RunEvent, RunRequest
 from registry import RunState, _runs
 
@@ -28,7 +28,14 @@ def _on_task_done(run_id: str, task: asyncio.Task) -> None:
 @router.post("/runs", status_code=202)
 async def create_run(request: RunRequest) -> dict:
     run_id = str(uuid.uuid4())
-    agent = ImplementerAgent(run_id, request)
+    critic = None
+    if request.critic and request.critic.enabled:
+        critic = DefaultCritic(
+            api_key=request.llm_api_key or None,
+            model=request.critic.model or "claude-haiku-4-5-20251001",
+            threshold=request.critic.threshold,
+        )
+    agent = ImplementerAgent(run_id, request, critic=critic)
     task = asyncio.create_task(agent.run(), name=f"run-{run_id[:8]}")
     _runs[run_id] = RunState(run_id=run_id, agent=agent, task=task)
     task.add_done_callback(lambda t: _on_task_done(run_id, t))

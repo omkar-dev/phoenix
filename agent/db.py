@@ -48,14 +48,17 @@ CREATE TABLE IF NOT EXISTS run_logs (
 CREATE INDEX IF NOT EXISTS idx_run_logs_run_id ON run_logs(run_id);
 
 CREATE TABLE IF NOT EXISTS interrupted_runs (
-    run_id         TEXT PRIMARY KEY,
-    repo           TEXT NOT NULL,
-    issue_number   INTEGER NOT NULL,
-    worktree_path  TEXT,
-    branch_name    TEXT,
-    interrupted_at TEXT NOT NULL
+    run_id          TEXT PRIMARY KEY,
+    repo            TEXT NOT NULL,
+    issue_number    INTEGER NOT NULL,
+    worktree_path   TEXT,
+    branch_name     TEXT,
+    conversation_id TEXT,
+    persistence_dir TEXT,
+    interrupted_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_interrupted_issue ON interrupted_runs(repo, issue_number);
+CREATE INDEX IF NOT EXISTS idx_interrupted_branch ON interrupted_runs(repo, branch_name);
 """
 
 
@@ -74,19 +77,30 @@ async def init_db() -> None:
         try:
             await db.executescript("""
                 CREATE TABLE IF NOT EXISTS interrupted_runs (
-                    run_id         TEXT PRIMARY KEY,
-                    repo           TEXT NOT NULL,
-                    issue_number   INTEGER NOT NULL,
-                    worktree_path  TEXT,
-                    branch_name    TEXT,
-                    interrupted_at TEXT NOT NULL
+                    run_id          TEXT PRIMARY KEY,
+                    repo            TEXT NOT NULL,
+                    issue_number    INTEGER NOT NULL,
+                    worktree_path   TEXT,
+                    branch_name     TEXT,
+                    conversation_id TEXT,
+                    persistence_dir TEXT,
+                    interrupted_at  TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_interrupted_issue
                     ON interrupted_runs(repo, issue_number);
+                CREATE INDEX IF NOT EXISTS idx_interrupted_branch
+                    ON interrupted_runs(repo, branch_name);
             """)
             await db.commit()
         except Exception:
             pass
+        # Migration: add conversation_id and persistence_dir columns to existing tables.
+        for col in ("conversation_id TEXT", "persistence_dir TEXT"):
+            try:
+                await db.execute(f"ALTER TABLE interrupted_runs ADD COLUMN {col}")
+                await db.commit()
+            except Exception:
+                pass  # column already exists
 
 
 # ── Repos ──────────────────────────────────────────────────────────────────────
@@ -190,16 +204,20 @@ async def save_interrupted_run(
     issue_number: int,
     worktree_path: str | None,
     branch_name: str | None,
+    conversation_id: str | None = None,
+    persistence_dir: str | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
             INSERT OR REPLACE INTO interrupted_runs
-                (run_id, repo, issue_number, worktree_path, branch_name, interrupted_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (run_id, repo, issue_number, worktree_path, branch_name,
+                 conversation_id, persistence_dir, interrupted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (run_id, repo, issue_number, worktree_path, branch_name, now),
+            (run_id, repo, issue_number, worktree_path, branch_name,
+             conversation_id, persistence_dir, now),
         )
         await db.commit()
 
@@ -222,6 +240,19 @@ async def get_latest_interrupted_run(repo: str, issue_number: int) -> dict | Non
             "SELECT * FROM interrupted_runs WHERE repo = ? AND issue_number = ? "
             "ORDER BY interrupted_at DESC LIMIT 1",
             (repo, issue_number),
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_interrupted_run_by_branch(repo: str, branch_name: str) -> dict | None:
+    """Return the most recent interrupted run for a given branch name."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM interrupted_runs WHERE repo = ? AND branch_name = ? "
+            "ORDER BY interrupted_at DESC LIMIT 1",
+            (repo, branch_name),
         ) as cur:
             row = await cur.fetchone()
     return dict(row) if row else None

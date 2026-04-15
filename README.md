@@ -112,6 +112,54 @@ All agent configuration lives in `agent/.env`. Copy `agent/.env.example` and fil
 | `LLM_MODEL` | No | `anthropic/claude-sonnet-4-6` | LiteLLM model string |
 | `CORS_ORIGINS` | No | `*` in dev | Comma-separated allowed origins |
 | `PNX_REPOS_DIR` | No | `~/.pnx/repos` | Directory for base git clones |
+| `SECRETS_BACKEND` | No | `env` | Secrets backend: `env`, `doppler`, `vault`, or `kv` |
+
+### Secrets abstraction layer — `agent/secrets/`
+
+Phoenix uses a pluggable secrets backend so credentials can be sourced from environment variables, Doppler, HashiCorp Vault, or a simple key-value store without changing any application code. The backend is selected via `SECRETS_BACKEND`.
+
+#### New files
+
+| File | Purpose |
+|---|---|
+| `secrets/base.py` | `SecretsBackend` ABC — `get()`, `require()`, `set()` |
+| `secrets/env.py` | `EnvBackend` — reads `os.environ` (default) |
+| `secrets/kv.py` | `KVBackend` — in-memory dict with optional JSON file |
+| `secrets/doppler.py` | `DopplerBackend` — Doppler REST API via `urllib` |
+| `secrets/vault.py` | `VaultBackend` — HashiCorp Vault KV v1/v2 (auto-detected) |
+| `secrets/factory.py` | Registry + `create_backend()` + `get_secrets_store()` singleton |
+| `secrets/__init__.py` | Public API + `get_secret()` / `require_secret()` helpers |
+
+#### Switching backends
+
+```bash
+# Doppler (needs DOPPLER_TOKEN, DOPPLER_PROJECT, DOPPLER_CONFIG)
+SECRETS_BACKEND=doppler uvicorn app:app --port 8001
+
+# HashiCorp Vault (needs VAULT_TOKEN; optional: VAULT_ADDR, VAULT_MOUNT, VAULT_PATH)
+SECRETS_BACKEND=vault uvicorn app:app --port 8001
+
+# In-memory KV loaded from a JSON file (useful for local dev / CI)
+SECRETS_KV_FILE=/run/secrets/app.json SECRETS_BACKEND=kv uvicorn app:app --port 8001
+```
+
+#### Adding a custom backend
+
+Register a factory before startup — no existing code needs to change:
+
+```python
+from secrets import register_backend, SecretsBackend
+
+class MyBackend(SecretsBackend):
+    def get(self, key: str) -> str | None:
+        ...
+
+register_backend("mybackend", lambda **kw: MyBackend(**kw))
+```
+
+Then set `SECRETS_BACKEND=mybackend` in the environment.
+
+All backends cache results in-process. Error messages never include secret values — only key names and HTTP status codes.
 
 ### Frontend service URLs
 

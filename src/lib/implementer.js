@@ -293,6 +293,13 @@ export async function implement(issue, repoFullName, agentConfig = {}) {
         ...(agentConfig.autonomy ? { autonomy: agentConfig.autonomy } : {}),
         ...(agentConfig.maxIterations ? { max_iterations: agentConfig.maxIterations } : {}),
         ...(agentConfig.existingBranch ? { existing_branch: agentConfig.existingBranch } : {}),
+        ...(agentConfig.criticEnabled ? {
+          critic: {
+            enabled: true,
+            threshold: agentConfig.criticThreshold ?? 0.75,
+            max_cycles: agentConfig.criticMaxCycles ?? 2,
+          },
+        } : {}),
       }),
     });
     if (!res.ok) throw new Error(`Agent server ${res.status}`);

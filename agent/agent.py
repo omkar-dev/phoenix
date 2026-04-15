@@ -3,6 +3,7 @@ import json
 import re
 import shutil
 import tempfile
+import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,6 +45,7 @@ from config import (
     LLM_MODEL,
     _repo_locks,
 )
+from critic import Critic, CriticContext, CriticResult
 from models import RunEvent, RunRequest
 from registry import AgentResult, _runs
 
@@ -59,9 +61,10 @@ _commit_locks: dict[str, asyncio.Lock] = {}
 
 
 class ImplementerAgent:
-    def __init__(self, run_id: str, request: RunRequest) -> None:
+    def __init__(self, run_id: str, request: RunRequest, critic: Critic | None = None) -> None:
         self.run_id = run_id
         self.request = request
+        self._critic = critic
         self.work_dir: Path | None = None       # the worktree path
         self._base_dir: Path | None = None      # the shared base clone
         self._worktree_branch: str | None = None  # branch name inside base repo
@@ -70,6 +73,8 @@ class ImplementerAgent:
         self._repo = None   # resolved lazily in run()
         self._issue = None  # resolved lazily in run()
         self._conversation: Conversation | None = None
+        self._conversation_id: uuid.UUID | None = None
+        self._persistence_dir: Path | None = None
         self._file_tree: str = ""
         self._file_snippets: str = ""
         self._tool_calls: int = 0
@@ -178,6 +183,8 @@ class ImplementerAgent:
                         self.request.issue_number,
                         result.worktree_path,
                         result.branch,
+                        conversation_id=str(self._conversation_id) if self._conversation_id else None,
+                        persistence_dir=str(self._persistence_dir) if self._persistence_dir else None,
                     ))
                 else:
                     await self.emit("error", {"message": result.error or "Agent run failed"})
@@ -489,12 +496,40 @@ class ImplementerAgent:
             tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
         )
         max_iterations = self.request.max_iterations or 100
+
+        # ── Conversation persistence ──────────────────────────────────────────
+        # If this run continues an interrupted branch, restore the previous
+        # conversation so the agent resumes with full context of what it already did.
+        prior_state: dict | None = None
+        if self.request.existing_branch:
+            prior_state = await _db.get_interrupted_run_by_branch(
+                self.request.repo_full_name,
+                self.request.existing_branch,
+            )
+
+        if prior_state and prior_state.get("conversation_id") and prior_state.get("persistence_dir"):
+            # Restore: reuse the saved conversation_id and persistence_dir
+            self._conversation_id = uuid.UUID(prior_state["conversation_id"])
+            self._persistence_dir = Path(prior_state["persistence_dir"])
+            await self.emit("progress", {
+                "step": "conversation_restore",
+                "message": "Restoring previous conversation context…",
+            })
+        else:
+            # Fresh run: derive conversation_id from run_id (deterministic, unique)
+            self._conversation_id = uuid.UUID(self.run_id)
+            self._persistence_dir = Path.home() / ".pnx" / "conversations" / self.run_id
+            self._persistence_dir.mkdir(parents=True, exist_ok=True)
+
         self._conversation = Conversation(
             agent=agent,
             workspace=str(self.work_dir),
             callbacks=[_on_event],
             visualizer=None,  # no rich console output in server context
             max_iteration_per_run=max_iterations,
+            persistence_dir=self._persistence_dir,
+            conversation_id=self._conversation_id,
+            delete_on_close=False,  # keep state so interrupted runs can be resumed
         )
 
         prompt = self._build_prompt()
@@ -546,6 +581,49 @@ class ImplementerAgent:
                 branch=self._worktree_branch if is_max_iter else None,
             )
 
+        # ── Critic refinement loop ────────────────────────────────────────────
+        critic_cfg = self.request.critic
+        if self._critic is not None and critic_cfg is not None and critic_cfg.enabled:
+            for cycle in range(critic_cfg.max_cycles):
+                interim = self._parse_conversation()
+                diff = await self._get_diff()
+                ctx = CriticContext(
+                    acceptance_criteria=self.request.spec.acceptance_criteria,
+                    work_dir=self.work_dir,
+                    agent_summary=interim.summary,
+                    diff=diff,
+                    cycle=cycle,
+                )
+                critique: CriticResult = await self._critic.evaluate(ctx)
+                await self.emit("critic_result", {
+                    "cycle": cycle,
+                    "score": critique.score,
+                    "passed": critique.passed,
+                    "issues": critique.issues,
+                })
+                if critique.passed:
+                    break
+                feedback_prompt = self._build_critique_prompt(critique)
+
+                def _refine_sync() -> None:
+                    self._conversation.send_message(feedback_prompt)
+                    self._conversation.run()
+
+                try:
+                    future = loop.run_in_executor(None, _refine_sync)
+                    heartbeat_task = asyncio.create_task(_heartbeat(future))
+                    try:
+                        await future
+                    finally:
+                        heartbeat_task.cancel()
+                except Exception as exc:
+                    # Refinement failure is non-fatal — return what we have
+                    await self.emit("progress", {
+                        "step": "critic_error",
+                        "message": f"Critic refinement cycle {cycle} failed: {exc}",
+                    })
+                    break
+
         return self._parse_conversation()
 
     async def _relay(self, event) -> None:
@@ -592,6 +670,23 @@ class ImplementerAgent:
             detail = getattr(event, "detail", None) or getattr(event, "message", None) or str(event)
             msg = f"{code}: {detail}" if code else str(detail)
             await self.emit("error", {"message": str(msg)})
+
+    async def _get_diff(self) -> str:
+        """Return uncommitted changes in the worktree as a unified diff string."""
+        _, staged   = await self._git_out("diff", "--cached")
+        _, unstaged = await self._git_out("diff")
+        return (staged + "\n" + unstaged).strip()
+
+    def _build_critique_prompt(self, critique: CriticResult) -> str:
+        issues_text = "\n".join(f"- {i}" for i in critique.issues) if critique.issues else "  (none listed)"
+        return (
+            f"── CRITIC FEEDBACK ──\n\n"
+            f"Your implementation scored {critique.score:.0%} against the acceptance criteria.\n\n"
+            f"Issues found:\n{issues_text}\n\n"
+            f"{critique.feedback}\n\n"
+            f"Please fix the issues above. Re-read the relevant files, apply the necessary "
+            f"changes, then output your updated JSON block."
+        )
 
     def _build_prompt(self) -> str:
         req  = self.request

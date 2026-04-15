@@ -44,7 +44,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["agent", "app", "config", "db", "models", "registry", "routes"]
+known-first-party = ["agent", "app", "config", "db", "models", "registry", "routes", "secrets"]
 
 [tool.ruff.format]
 quote-style = "double"

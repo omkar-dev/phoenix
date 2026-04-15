@@ -20,6 +20,13 @@ class McpServer(BaseModel):
     token: str = ""
 
 
+class CriticConfig(BaseModel):
+    enabled: bool = False
+    threshold: float = Field(0.75, ge=0.0, le=1.0)
+    max_cycles: int = Field(2, ge=1, le=5)
+    model: Optional[str] = None  # defaults to claude-haiku in DefaultCritic
+
+
 class RunRequest(BaseModel):
     issue_number: int
     repo_full_name: str  # "owner/repo"
@@ -42,6 +49,7 @@ class RunRequest(BaseModel):
     autonomy: Optional[str] = None              # assist | semi-autonomous | autonomous
     max_iterations: Optional[int] = Field(None, ge=1, description="Max agent iterations per run")
     existing_branch: Optional[str] = None       # when set, check out this branch and push to it (no new PR)
+    critic: Optional[CriticConfig] = None       # when set, enables post-run LLM evaluation
 
 
 class RunEvent(BaseModel):

@@ -4,6 +4,13 @@ Phoenix v5 — centralised configuration
 All settings are read from environment variables (and optionally a .env file
 in the agent/ directory). Missing required variables raise a clear error at
 startup rather than failing silently later.
+
+Secrets backend
+---------------
+By default secrets (GITHUB_TOKEN, ANTHROPIC_API_KEY) are read from the
+process environment via the built-in ``env`` backend.  Set ``SECRETS_BACKEND``
+to ``doppler``, ``vault``, or ``kv`` to switch to an alternative backend
+without changing any other code.  See ``agent/secrets/`` for details.
 """
 
 import asyncio
@@ -11,6 +18,12 @@ from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# NOTE: `secrets` here refers to the local agent/secrets/ package, not the
+# Python stdlib `secrets` module.  agent/ is always on sys.path when this
+# module is loaded (it is the package root), so the local package takes
+# precedence over the stdlib one.
+from secrets import get_secrets_store  # local agent/secrets/ package
 
 
 class _Settings(BaseSettings):
@@ -34,14 +47,25 @@ class _Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".pnx" / "repos",
         description="Directory where base git clones are stored",
     )
+    secrets_backend: str = Field(
+        "env",
+        description="Secrets backend to use: env | doppler | vault | kv",
+    )
 
 
 # Validate and load at import time — bad config fails loudly at startup.
 _settings = _Settings()
 
+# Initialise the secrets store using the configured backend.
+# When SECRETS_BACKEND=env (the default) this simply reads os.environ and
+# the behaviour is identical to the previous implementation.
+_secrets = get_secrets_store()
+
 # Re-export as module-level names so existing imports don't change.
-GITHUB_TOKEN: str = _settings.github_token
-ANTHROPIC_API_KEY: str = _settings.anthropic_api_key
+# Pydantic / .env values take precedence; the secrets backend fills in any
+# gaps (e.g. when running with SECRETS_BACKEND=doppler and no local .env).
+GITHUB_TOKEN: str = _settings.github_token or _secrets.get("GITHUB_TOKEN") or ""
+ANTHROPIC_API_KEY: str = _settings.anthropic_api_key or _secrets.get("ANTHROPIC_API_KEY") or ""
 LLM_MODEL: str = _settings.llm_model
 CORS_ORIGINS: str = _settings.cors_origins
 BASE_REPOS_DIR: Path = _settings.pnx_repos_dir

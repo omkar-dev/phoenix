@@ -28,6 +28,7 @@ interface AgentForm {
   fallbackProvider: string; fallbackModel: string;
   sampling: string; apiKey: string; llmBaseUrl: string; endpoint: string;
   lanes: string[]; autonomy: string; mcpServers: McpServer[];
+  criticEnabled: boolean; criticThreshold: number; criticMaxCycles: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ const EMPTY_FORM: AgentForm = {
   fallbackProvider: 'openai', fallbackModel: (PROVIDERS as any).openai.models[0],
   sampling: 'balanced', apiKey: '', llmBaseUrl: (PROVIDER_ENDPOINTS as any).claude,
   endpoint: AGENT_BASE_URL, lanes: [], autonomy: 'assist', mcpServers: [],
+  criticEnabled: false, criticThreshold: 0.75, criticMaxCycles: 2,
 };
 
 const TEMPLATES = [
@@ -101,6 +103,9 @@ export default function AgentsPanel() {
         llmBaseUrl: agent.llmBaseUrl ?? (PROVIDER_ENDPOINTS as any)[agent.provider ?? 'claude'] ?? '',
         endpoint: agent.endpoint ?? AGENT_BASE_URL, lanes: agent.lanes ?? [], autonomy: agent.autonomy ?? 'assist',
         mcpServers: agent.mcpServers ? agent.mcpServers.map((m: any) => ({ ...m })) : [],
+        criticEnabled: agent.criticEnabled ?? false,
+        criticThreshold: agent.criticThreshold ?? 0.75,
+        criticMaxCycles: agent.criticMaxCycles ?? 2,
       });
     } else {
       setForm({ ...EMPTY_FORM, id: '' });
@@ -124,6 +129,9 @@ export default function AgentsPanel() {
       lanes: form.lanes,
       actionType: form.lanes.includes('triage') ? 'refine' : 'implement',
       autonomy: form.autonomy, mcpServers: [...form.mcpServers],
+      criticEnabled: form.criticEnabled,
+      criticThreshold: form.criticThreshold,
+      criticMaxCycles: form.criticMaxCycles,
     });
     setShowForm(false);
   }
@@ -899,6 +907,52 @@ function Step4({ form, patchForm, onToggleLane }: any) {
         </div>
         <p class="text-[10px] text-on-surface-variant/40 mt-1.5">These rules are appended to the system prompt automatically. Keep them short and absolute.</p>
       </div>
+
+      <div class="pt-1" style="border-top:1px solid rgba(195,198,214,0.2)">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined" style="font-size:14px;color:#7c3aed">rate_review</span>
+            <p class="text-xs font-bold text-on-surface">Critic</p>
+            <span class="text-[10px] text-on-surface-variant/50">— LLM evaluates output and triggers refinement if score is low</span>
+          </div>
+          <button
+            onClick={() => patchForm({ criticEnabled: !form.criticEnabled })}
+            class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full transition-all"
+            style={`cursor:pointer;border:none;${form.criticEnabled ? 'background:#7c3aed;color:#fff' : 'background:#e8eaed;color:#434654'}`}>
+            <span class="material-symbols-outlined" style="font-size:13px">{form.criticEnabled ? 'toggle_on' : 'toggle_off'}</span>
+            {form.criticEnabled ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
+        {form.criticEnabled && (
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Pass threshold</FieldLabel>
+              <div class="flex items-center gap-2">
+                <input
+                  type="range" min="0.5" max="1.0" step="0.05"
+                  value={form.criticThreshold}
+                  onInput={(e: any) => patchForm({ criticThreshold: parseFloat(e.target.value) })}
+                  style="flex:1;accent-color:#7c3aed" />
+                <span class="text-xs font-semibold text-on-surface w-10 text-right">{Math.round(form.criticThreshold * 100)}%</span>
+              </div>
+              <p class="text-[10px] text-on-surface-variant/40 mt-1">Score below this triggers refinement.</p>
+            </div>
+            <div>
+              <FieldLabel>Max refinement cycles</FieldLabel>
+              <div class="flex rounded overflow-hidden" style="border:1px solid rgba(195,198,214,0.4)">
+                {[1, 2, 3].map(n => (
+                  <button key={n} onClick={() => patchForm({ criticMaxCycles: n })}
+                          class="flex-1 text-xs font-semibold py-1.5 transition-colors"
+                          style={`cursor:pointer;border:none;${form.criticMaxCycles === n ? 'background:#7c3aed;color:#fff' : 'background:#fff;color:#434654'}`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p class="text-[10px] text-on-surface-variant/40 mt-1">How many times the agent can be asked to refine.</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -919,6 +973,7 @@ function Step5({ form }: { form: AgentForm }) {
     ['Autonomy',  form.autonomy],
     ['Always',    form.guardrailsAlways || '(none)'],
     ['Never',     form.guardrailsNever || '(none)'],
+    ['Critic',    form.criticEnabled ? `Enabled · ${Math.round(form.criticThreshold * 100)}% threshold · ${form.criticMaxCycles} cycles` : 'Disabled'],
   ];
   return (
     <div class="space-y-3">

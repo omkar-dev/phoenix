@@ -29,7 +29,11 @@ from github import Github
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-GITHUB_TOKEN: str = os.environ["GITHUB_TOKEN"]
+# Import local secrets package (agent/secrets/); agent/ is always the package
+# root, so this shadows the stdlib `secrets` module intentionally.
+from secrets import require_secret  # local agent/secrets/ package
+
+GITHUB_TOKEN: str = require_secret("GITHUB_TOKEN")
 SIMILARITY_THRESHOLD: float = float(os.getenv("SIMILARITY_THRESHOLD", "0.15"))
 CACHE_TTL: int = int(os.getenv("CACHE_TTL_SECONDS", "300"))  # 5 minutes
 MAX_ISSUES: int = int(os.getenv("MAX_ISSUES", "500"))
