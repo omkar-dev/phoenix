@@ -89,6 +89,7 @@ async def cancel_run(run_id: str) -> dict:
     if not state:
         raise HTTPException(status_code=404, detail="Run not found")
     state.task.cancel()
+    asyncio.create_task(state.agent._cleanup_worktree())
     return {"ok": True}
 
 
