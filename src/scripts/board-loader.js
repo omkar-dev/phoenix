@@ -15,10 +15,12 @@ async function _fetchPrUnresolvedCounts(repo) {
   const prs = [...runStore.entries()].filter(([, run]) => run.prUrl);
   if (!prs.length) return;
   await Promise.all(
-    prs.map(async ([issueNumber]) => {
+    prs.map(async ([issueNumber, run]) => {
+      // Extract the actual PR number from the PR URL (may differ from issue number).
+      const prNumber = Number(run.prUrl.split('/').at(-1)) || issueNumber;
       const [{ threads }, hasConflicts] = await Promise.all([
-        fetchPRReviewThreads(repo, issueNumber),
-        fetchPRMergeable(repo, issueNumber),
+        fetchPRReviewThreads(repo, prNumber),
+        fetchPRMergeable(repo, prNumber),
       ]);
       const unresolved = threads.filter((t) => !t.isResolved).length;
       setPrUnresolved(issueNumber, unresolved);

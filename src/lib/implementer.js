@@ -36,6 +36,10 @@ export function setPrConflicts(issueNumber, hasConflicts) {
 
 const _listeners = new Set();
 
+function _notify(issueNumber = null) {
+  for (const fn of _listeners) fn(issueNumber);
+}
+
 // ── Persistence helpers ───────────────────────────────────────
 
 function _persistLogs() {
