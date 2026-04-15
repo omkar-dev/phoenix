@@ -22,7 +22,9 @@ composite agent behaviour.
 6. [How agents discover and attach skills](#6-how-agents-discover-and-attach-skills)
 7. [Worked example: creating `label_issue` from scratch](#7-worked-example-creating-label_issue-from-scratch)
 8. [Stacking multiple skills](#8-stacking-multiple-skills)
-9. [Pre-merge checklist](#9-pre-merge-checklist)
+9. [Running the validator locally](#9-running-the-validator-locally)
+10. [CI integration](#10-ci-integration)
+11. [Pre-merge checklist](#11-pre-merge-checklist)
 
 ---
 
@@ -177,6 +179,7 @@ Delete any optional section you do not need.
 ```bash
 cd agent
 python -c "from native_skills import list_skills; [print(s['name'], '-', s['title']) for s in list_skills()]"
+```
 
 No other files need to change. Open a PR with:
 
@@ -641,7 +644,46 @@ consider whether one should be refactored before stacking them.
 
 ---
 
-## 9. Pre-merge checklist
+## 9. Running the validator locally
+
+The validator (`scripts/validate_skills.py`) requires only the Python standard
+library — no `pip install` is needed. Run it from the repository root:
+
+```bash
+python scripts/validate_skills.py
+```
+
+On success it prints:
+
+```
+Skill validation passed: 3/3 file(s) OK.
+```
+
+On failure it prints each error with the file path and the specific field or
+section that is missing or malformed, then exits with code 1:
+
+```
+ERROR: agent/native_skills/my_skill.md: front-matter missing required field 'description'
+ERROR: agent/native_skills/my_skill.md: missing required section '## Usage'
+
+Skill validation failed: 2 error(s) across 1/4 file(s).
+```
+
+---
+
+## 10. CI integration
+
+The validator runs automatically as a separate `validate-skills` job in the
+GitHub Actions CI pipeline (`.github/workflows/ci.yml`). Pull requests that
+fail validation cannot be merged until all errors are resolved.
+
+The job installs no packages beyond `ruff` (for linting the validator script
+itself) and makes no network requests, so it works in sandboxed and air-gapped
+CI environments.
+
+---
+
+## 11. Pre-merge checklist
 
 Before opening a PR, verify every item below:
 
@@ -660,3 +702,4 @@ Before opening a PR, verify every item below:
 - [ ] The skill does **not** wrap, shadow, or replace an existing SDK tool.
 - [ ] `load_skill("<name>")` returns the file content without error.
 - [ ] `attach_skills("<name>")` returns a non-empty string without error.
+- [ ] `python scripts/validate_skills.py` exits with code 0.

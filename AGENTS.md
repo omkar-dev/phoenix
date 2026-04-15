@@ -35,6 +35,11 @@ make format-frontend  # prettier --write src/
 make typecheck        # astro check (frontend types)
 ```
 
+### Skill validation
+```bash
+python scripts/validate_skills.py   # Validate all native_skills/*.md against the contract
+```
+
 ### Build
 ```bash
 make build            # Astro production build
@@ -84,4 +89,7 @@ Frontend build-time: `PUBLIC_AGENT_URL` (default `http://localhost:8001`), `PUBL
 
 ## CI
 
-GitHub Actions runs on push/PR to main: ruff lint+format check, pytest (Python 3.12/3.13 matrix), ESLint, `astro check`, and `astro build` for frontend.
+GitHub Actions runs on push/PR to main:
+- **backend** — ruff lint+format check, pytest (Python 3.12/3.13 matrix)
+- **validate-skills** — `python scripts/validate_skills.py` checks every `agent/native_skills/*.md` file against the contract (stdlib only, no pip install)
+- **frontend** — ESLint, `astro check`, `astro build`
