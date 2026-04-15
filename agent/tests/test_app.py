@@ -63,6 +63,105 @@ async def test_repos_delete(client):
     assert not any(r["full_name"] == "owner/repo" for r in resp.json())
 
 
+async def test_team_assignment_no_teams(client):
+    resp = await client.post("/team-assignment", json={
+        "repo": "owner/repo",
+        "issue_number": 1,
+        "issue_title": "Test issue",
+        "to_column": "todo",
+        "teams": [],
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["needs_manual"] is True
+    assert data["team_id"] is None
+
+
+async def test_team_assignment_no_api_key(client, monkeypatch):
+    monkeypatch.setattr("routes.movements.ANTHROPIC_API_KEY", "")
+    resp = await client.post("/team-assignment", json={
+        "repo": "owner/repo",
+        "issue_number": 2,
+        "issue_title": "Test issue",
+        "to_column": "todo",
+        "teams": [{"id": "fullstack", "name": "Full Stack"}],
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["needs_manual"] is True
+
+
+async def test_team_assignment_ai_success(client, monkeypatch):
+    import json as _json
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_content = MagicMock()
+    mock_content.text = _json.dumps({
+        "team_id": "fullstack",
+        "confidence": 0.9,
+        "reasoning": "Full Stack team handles authentication issues.",
+    })
+    mock_message = MagicMock()
+    mock_message.content = [mock_content]
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.messages.create = AsyncMock(return_value=mock_message)
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", MagicMock(return_value=mock_client_instance))
+
+    resp = await client.post("/team-assignment", json={
+        "repo": "owner/repo",
+        "issue_number": 3,
+        "issue_title": "Add OAuth2 login",
+        "issue_body": "Implement GitHub OAuth2 for authentication.",
+        "to_column": "todo",
+        "teams": [
+            {"id": "fullstack", "name": "Full Stack"},
+            {"id": "backend", "name": "Backend"},
+        ],
+        "llm_api_key": "test-key",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["team_id"] == "fullstack"
+    assert data["needs_manual"] is False
+    assert data["confidence"] == 0.9
+
+
+async def test_team_assignment_ai_low_confidence(client, monkeypatch):
+    import json as _json
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_content = MagicMock()
+    mock_content.text = _json.dumps({
+        "team_id": "backend",
+        "confidence": 0.3,
+        "reasoning": "Unclear which team should handle this.",
+    })
+    mock_message = MagicMock()
+    mock_message.content = [mock_content]
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.messages.create = AsyncMock(return_value=mock_message)
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", MagicMock(return_value=mock_client_instance))
+
+    resp = await client.post("/team-assignment", json={
+        "repo": "owner/repo",
+        "issue_number": 4,
+        "issue_title": "Fix something",
+        "to_column": "todo",
+        "teams": [{"id": "backend", "name": "Backend"}],
+        "llm_api_key": "test-key",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["needs_manual"] is True
+    assert data["team_id"] is None
+
+
 async def test_movements_empty(client):
     resp = await client.get("/movements")
     assert resp.status_code == 200

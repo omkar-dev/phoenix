@@ -21,6 +21,7 @@ import {
   getAgents as _getAgents,
   saveAgent as _saveAgent,
   removeAgent as _removeAgent,
+  getAllIssueTeamMeta as _getAllIssueTeamMeta,
 } from './agents.js';
 
 // ── UI visibility signals ────────────────────────────────────────────────────
@@ -77,6 +78,16 @@ export function removeAgent(id) {
   _removeAgent(id);
   refreshAgents();
 }
+
+// ── AI team assignment metadata ───────────────────────────────────────────────
+// Kept in sync with localStorage via the 'pnx:team-meta-update' custom DOM event
+// dispatched by board.js after every AI assignment.
+
+export const issueTeamMetaSignal = signal(_getAllIssueTeamMeta());
+
+window.addEventListener('pnx:team-meta-update', () => {
+  issueTeamMetaSignal.value = _getAllIssueTeamMeta();
+});
 
 // ── History ───────────────────────────────────────────────────────────────────
 // clearHistory() already triggers onRunUpdate → signals update automatically.
